@@ -4409,6 +4409,36 @@ static void test_template_output_peg_parsers(bool detailed_debug) {
     {
         auto tst = peg_tester("models/templates/Spark2.5.jinja", detailed_debug);
 
+        tst.test("Need to inspect the file.<tool_call>special_function"
+                 "<arg_key>arg1</arg_key><arg_value>1</arg_value></tool_call>")
+            .enable_thinking(true)
+            .reasoning_format(COMMON_REASONING_FORMAT_DEEPSEEK)
+            .tools({ special_function_tool })
+            .expect_reasoning("Need to inspect the file.")
+            .expect_tool_calls({{ "special_function", R"({"arg1":1})", {} }})
+            .run();
+
+        tst.test(" thinking</think>Hello, world!\nWhat's up?")
+            .reasoning_format(COMMON_REASONING_FORMAT_DEEPSEEK)
+            .enable_thinking(true)
+            .messages({ message_user, message_assist_prefill_reasoning })
+            .add_generation_prompt(false)
+            .continue_final_message(COMMON_CHAT_CONTINUATION_REASONING)
+            .expect_reasoning("I'm thinking")
+            .expect_content("Hello, world!\nWhat's up?")
+            .run();
+
+        tst.test("Hello, world!\nWhat's up?<｜end▁of▁sentence｜>")
+            .enable_thinking(false)
+            .expect(message_assist)
+            .run();
+
+        tst.test("Hello, world!\nWhat's up?")
+            .enable_thinking(false)
+            .is_partial(true)
+            .expect(message_assist)
+            .run();
+
         tst.test("Hello, world!\nWhat's up?")
             .enable_thinking(false)
             .expect(message_assist)

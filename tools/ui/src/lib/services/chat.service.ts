@@ -44,6 +44,7 @@ import type {
 import { isAbortError } from '$lib/utils/abort';
 import { ApiError } from '$lib/utils/api-fetch';
 import { getAuthHeaders, getJsonHeaders } from '$lib/utils/api-headers';
+import { toChatRequestMessage } from '$lib/utils/chat-request-message';
 import { formatAttachmentText } from '$lib/utils/formatters';
 import { streamIdentity } from '$lib/utils/stream-identity';
 
@@ -847,15 +848,9 @@ export class ChatService {
 			await ChatService.normalizeMessagesForApi(messages);
 		const requestBody: Record<string, unknown> = {
 			messages: normalizedMessages.map((msg: ApiChatMessageData) => {
-				const mapped: Record<string, unknown> = {
-					content: excludeReasoning ? ChatService.stripReasoningContent(msg.content) : msg.content,
-					role: msg.role,
-					tool_call_id: msg.tool_call_id,
-					tool_calls: msg.tool_calls
-				};
-
-				if (!excludeReasoning && msg.reasoning_content) {
-					mapped.reasoning_content = msg.reasoning_content;
+				const mapped = toChatRequestMessage(msg, excludeReasoning);
+				if (excludeReasoning && !msg.tool_calls?.length) {
+					mapped.content = ChatService.stripReasoningContent(msg.content);
 				}
 
 				return mapped;
@@ -1103,21 +1098,9 @@ export class ChatService {
 		}
 
 		const requestBody: ApiChatCompletionRequest = {
-			messages: normalizedMessages.map((msg: ApiChatMessageData) => {
-				const mapped: ApiChatCompletionRequest['messages'][0] = {
-					content: msg.content,
-					role: msg.role,
-					tool_call_id: msg.tool_call_id,
-					tool_calls: msg.tool_calls
-				};
-
-				// Include reasoning_content from the dedicated field
-				if (!excludeReasoningFromContext && msg.reasoning_content) {
-					mapped.reasoning_content = msg.reasoning_content;
-				}
-
-				return mapped;
-			}),
+			messages: normalizedMessages.map((msg) =>
+				toChatRequestMessage(msg, excludeReasoningFromContext)
+			),
 			return_progress: stream ? true : undefined,
 			sse_ping_interval: stream ? 1 : undefined,
 			stream,

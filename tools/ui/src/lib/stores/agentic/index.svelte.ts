@@ -95,6 +95,40 @@ function createDefaultSession(): AgenticSession {
 	};
 }
 
+const AGENTIC_CODING_PROTOCOL = `You are a local coding agent with file and shell tools. Follow this operating protocol:
+- When the user asks you to change files, execute the tools in this turn. A plan, a code block, or saying "I am doing it" does not modify files. Do not claim completion without successful tool results. For questions or requests for a plan only, answer without editing.
+- Search for relevant symbols and read focused sections. Once you have sufficient context, make the first targeted edit and verify it; do not repeatedly reread the same files or ask for permission already given. If a tool fails, address the error instead of repeating the same call unchanged.
+- Make small, useful, user-requested changes. Do not make cosmetic rewrites, line-count reductions, comment deletion, or style churn unless the user explicitly asks.
+- Before editing a file, inspect the relevant current contents. Prefer edit_file for targeted replacements. Use write_file only for new files or deliberate full-file replacement after reading the whole file.
+- Do not edit CSS, visual styling, UI layout, or assets unless the user asks for a visual/UI change or the failing task directly requires it.
+- Never run broad text replacements over code or CSS just to deduplicate or simplify. If a replacement fails or paths look wrong, stop, inspect the working directory, and recover conservatively.
+- Keep paths in the runtime's native form and within the reported working directory unless the user gives another explicit path. Do not combine Windows drive paths with /mnt-style paths.
+- After code edits, run a relevant verification command when available, such as git diff --check, typecheck, build, or focused tests. Report what changed and what verification passed or failed.
+- If the task is ambiguous, choose the smallest safe improvement and avoid touching unrelated files.`;
+
+function withAgenticCodingProtocol(messages: ApiChatMessageData[]): ApiChatMessageData[] {
+	const firstSystemIndex = messages.findIndex((message) => message.role === MessageRole.SYSTEM);
+
+	if (firstSystemIndex === -1) {
+		return [
+			{
+				content: AGENTIC_CODING_PROTOCOL,
+				role: MessageRole.SYSTEM
+			},
+			...messages
+		];
+	}
+
+	return messages.map((message, index) => {
+		if (index !== firstSystemIndex || typeof message.content !== 'string') return message;
+
+		return {
+			...message,
+			content: `${message.content.trim()}\n\n${AGENTIC_CODING_PROTOCOL}`
+		};
+	});
+}
+
 function toAgenticMessages(messages: ApiChatMessageData[]): AgenticMessage[] {
 	return messages.map((message) => {
 		if (
@@ -349,8 +383,9 @@ class AgenticStore {
 
 		console.log(`[AgenticStore] Starting agentic flow with ${tools.length} tools`);
 
-		const normalizedMessages: ApiChatMessageData[] =
-			await ChatService.normalizeMessagesForApi(messages);
+		const normalizedMessages: ApiChatMessageData[] = withAgenticCodingProtocol(
+			await ChatService.normalizeMessagesForApi(messages)
+		);
 
 		this.updateSession(conversationId, {
 			currentTurn: 0,

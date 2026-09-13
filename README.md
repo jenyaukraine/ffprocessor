@@ -1,3 +1,31 @@
+# ffprocessor - Spark X2.5 (2026)
+
+A personal **llama.cpp fork for the new Spark X2.5 model**, with local coding-agent
+integration. The tested configuration is **Spark X2.5 4B Q4_K_M GGUF** on Windows
+with an AMD Radeon RX 7900 XTX using Vulkan.
+
+## What this fork changes
+
+- Native Spark X2.5 reasoning and tagged tool-call parsing.
+- Incremental text/tool streaming and clean end-of-turn handling.
+- Reasoning replay for tool calls, including when ordinary reasoning is excluded
+  from context in the built-in Web UI.
+- Coding-agent instructions and file-tool descriptions focused on actual,
+  targeted edits followed by verification.
+- A configurable Windows launcher, parser regressions, and UI replay tests.
+
+**[Build, run, and verify Spark X2.5](docs/ffprocessor.md)**
+
+Build the Web UI from this repository, not the upstream prebuilt UI. Download
+model weights separately. PenguinHarness is optional; its setup is documented
+in the guide. No model files, credentials, or personal project data are included.
+
+This is an integration fork, not a new training run or a guarantee of autonomous
+product development or 300 tokens/s. See the guide for measured smoke tests and
+limitations. The upstream history, attribution, and MIT license are preserved.
+
+## Upstream README
+
 # llama.cpp
 
 ![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)

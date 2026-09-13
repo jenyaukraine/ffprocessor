@@ -3179,6 +3179,176 @@ static void trim_all_content(std::vector<common_chat_msg> & messages) {
 
 }
 
+// Spark X2.5 format:
+// - Reasoning: <think>{reasoning}</think>, or a bare </think> when disabled/no reasoning
+// - Tool calls: <tool_call>{name}<arg_key>{key}</arg_key><arg_value>{value}</arg_value>...</tool_call>
+static common_chat_params common_chat_params_init_spark2_5(const common_chat_template &          tmpl,
+                                                           const autoparser::generation_params & inputs) {
+    common_chat_params data;
+
+    data.prompt            = common_chat_template_direct_apply_impl(tmpl, inputs);
+    data.generation_prompt = common_chat_template_generation_prompt_impl(tmpl, inputs);
+    data.format            = COMMON_CHAT_FORMAT_PEG_NATIVE;
+    data.supports_thinking = true;
+
+    const std::string TURN_START      = "<｜start▁of▁sentence｜>";
+    const std::string TURN_END        = "<｜end▁of▁sentence｜>";
+    const std::string BOT_START       = TURN_START + "<|Bot|>";
+    const std::string USER_START      = TURN_START + "<|User|>";
+    const std::string SYSTEM_START    = TURN_START + "<|System|>";
+    const std::string TOOL_START      = TURN_START + "<|Tool|>";
+    const std::string THINK_START     = "<think>";
+    const std::string THINK_END       = "</think>";
+    const std::string TOOL_CALL_START = "<tool_call>";
+    const std::string TOOL_CALL_END   = "</tool_call>";
+    const std::string ARG_KEY_START   = "<arg_key>";
+    const std::string ARG_KEY_END     = "</arg_key>";
+    const std::string ARG_VALUE_START = "<arg_value>";
+    const std::string ARG_VALUE_END   = "</arg_value>";
+
+    data.preserved_tokens = {
+        TURN_START,
+        TURN_END,
+        "<|Bot|>",
+        "<|User|>",
+        "<|System|>",
+        "<|Tool|>",
+        THINK_START,
+        THINK_END,
+        TOOL_CALL_START,
+        TOOL_CALL_END,
+        ARG_KEY_START,
+        ARG_KEY_END,
+        ARG_VALUE_START,
+        ARG_VALUE_END,
+    };
+
+    data.thinking_start_tag = THINK_START;
+    data.thinking_end_tags  = { THINK_END, TOOL_CALL_START };
+
+    data.message_delimiters = {
+        { COMMON_CHAT_ROLE_ASSISTANT, BOT_START    },
+        { COMMON_CHAT_ROLE_TOOL,      TOOL_START   },
+        { COMMON_CHAT_ROLE_USER,      USER_START   },
+        { COMMON_CHAT_ROLE_SYSTEM,    SYSTEM_START },
+    };
+
+    auto has_tools           = inputs.tools.is_array() && !inputs.tools.empty();
+    auto has_response_format = inputs.json_schema.is_object() && !inputs.json_schema.empty();
+    auto extract_reasoning   = inputs.reasoning_format != COMMON_REASONING_FORMAT_NONE;
+    auto include_grammar     = has_response_format || (has_tools && inputs.tool_choice != COMMON_CHAT_TOOL_CHOICE_NONE);
+
+    if (inputs.has_continuation()) {
+        const auto & msg = inputs.continue_msg;
+
+        data.generation_prompt = BOT_START + THINK_START + msg.reasoning_content;
+        if (inputs.continue_final_message == COMMON_CHAT_CONTINUATION_CONTENT) {
+            data.generation_prompt += THINK_END + msg.render_content();
+        }
+
+        data.prompt += data.generation_prompt;
+    }
+
+    auto parser = build_chat_peg_parser([&](common_chat_peg_builder & p) {
+        auto generation_prompt = p.literal(BOT_START);
+        auto end               = p.optional(p.literal(TURN_END)) + p.end();
+
+        auto reasoning = p.eps();
+        if (extract_reasoning) {
+            if (inputs.enable_thinking) {
+                reasoning = p.optional(p.optional(p.literal(THINK_START)) +
+                                       p.reasoning(p.until_one_of({ THINK_END, TOOL_CALL_START, TURN_END })) +
+                                       p.optional(p.literal(THINK_END)));
+            } else {
+                reasoning = p.optional(p.literal(THINK_END));
+            }
+        } else if (!inputs.enable_thinking) {
+            reasoning = p.optional(p.literal(THINK_END));
+        }
+
+        if (has_response_format) {
+            return generation_prompt + reasoning +
+                   p.content(p.schema(p.json(), "response-format-schema", inputs.json_schema)) + end;
+        }
+
+        if (!has_tools || inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_NONE) {
+            return generation_prompt + reasoning + p.content(p.until(TURN_END)) + end;
+        }
+
+        auto tool_choice = p.choice();
+        foreach_function(inputs.tools, [&](const json & tool) {
+            const auto &   function = tool.at("function");
+            const std::string name  = function.at("name");
+            auto params = function.contains("parameters") ? function.at("parameters") : json::object();
+
+            auto args = p.eps();
+            if (params.contains("properties") && params.at("properties").is_object() && !params.at("properties").empty()) {
+                auto schema_info = common_schema_info();
+                schema_info.resolve_refs(params);
+
+                auto arg_choice = p.choice();
+                for (const auto & [prop_name, prop_schema] : params.at("properties").items()) {
+                    auto value = schema_info.resolves_to_string(prop_schema)
+                        ? p.tool_arg_string_value(p.until(ARG_VALUE_END))
+                        : p.tool_arg_value(p.until(ARG_VALUE_END));
+
+                    arg_choice |= p.rule("spark2-5-arg-" + name + "-" + prop_name,
+                                         p.tool_arg(
+                                             p.tool_arg_open(p.literal(ARG_KEY_START)) +
+                                             p.tool_arg_name(p.literal(prop_name) + p.peek(p.literal(ARG_KEY_END))) +
+                                             p.tool_arg_close(p.literal(ARG_KEY_END)) +
+                                             p.tool_arg_open(p.literal(ARG_VALUE_START)) +
+                                             value +
+                                             p.tool_arg_close(p.literal(ARG_VALUE_END))));
+                }
+                args = p.zero_or_more(arg_choice + p.space());
+            }
+
+            auto tool_parser =
+                p.tool(p.tool_open(p.literal(TOOL_CALL_START)) +
+                       // Do not publish a shorter name while a shared prefix is still streaming.
+                       p.tool_name(p.literal(name) + p.peek(p.literal("<"))) +
+                       p.tool_args(args) +
+                       p.tool_close(p.literal(TOOL_CALL_END)));
+
+            tool_choice |= p.rule("spark2-5-tool-" + name, tool_parser);
+        });
+
+        const auto max_calls = inputs.parallel_tool_calls ? -1 : 1;
+        auto tool_calls = p.trigger_rule("tool-call", p.repeat(tool_choice + p.space(), 1, max_calls));
+        if (inputs.tool_choice != COMMON_CHAT_TOOL_CHOICE_REQUIRED) {
+            tool_calls = p.optional(tool_calls);
+        }
+
+        auto content = p.content(p.until_one_of({ TOOL_CALL_START, TURN_END }));
+        return generation_prompt + reasoning + content + tool_calls + end;
+    });
+
+    data.parser = parser.save();
+
+    if (include_grammar) {
+        data.grammar_lazy = !(has_response_format || inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_REQUIRED);
+        data.grammar      = build_grammar([&](const common_grammar_builder & builder) {
+            foreach_function(inputs.tools, [&](const json & tool) {
+                const auto & function = tool.at("function");
+                auto schema = function.contains("parameters") ? function.at("parameters") : json::object();
+                builder.resolve_refs(schema);
+            });
+            if (has_response_format) {
+                auto schema = inputs.json_schema;
+                builder.resolve_refs(schema);
+            }
+            parser.build_grammar(builder, data.grammar_lazy);
+        });
+
+        data.grammar_triggers = {
+            { COMMON_GRAMMAR_TRIGGER_TYPE_WORD, TOOL_CALL_START },
+        };
+    }
+
+    return data;
+}
+
 // MiniCPM5 format:
 // - Reasoning: <think>{reasoning}</think> (optional)
 // - Tool calls: <function name="foo"><param name="bar">value</param></function>
@@ -3599,6 +3769,15 @@ std::optional<common_chat_params> common_chat_try_specialized_template(
         src.find("<parameter=") != std::string::npos) {
         LOG_DBG("Using specialized template: Qwen3-Coder\n");
         return common_chat_params_init_qwen3_coder(tmpl, params);
+    }
+
+    // Spark X2.5 - <|Bot|> turns with <think> reasoning and tagged tool calls
+    if (src.find("<|Bot|>") != std::string::npos &&
+        src.find("message.reasoning_content") != std::string::npos &&
+        src.find("<arg_key>") != std::string::npos &&
+        src.find("<arg_value>") != std::string::npos) {
+        LOG_DBG("Using specialized template: Spark X2.5\n");
+        return common_chat_params_init_spark2_5(tmpl, params);
     }
 
     return std::nullopt;

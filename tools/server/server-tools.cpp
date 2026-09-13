@@ -886,7 +886,7 @@ struct server_tool_read_file : server_tool {
                     {"properties", {
                         {"path",       {{"type", "string"},  {"description", "Path to the file"}}},
                         {"start_line", {{"type", "integer"}, {"description", "First line to read, 1-based (default: 1)"}}},
-                        {"end_line",   {{"type", "integer"}, {"description", "Last line to read, 1-based inclusive (default: end of file)"}}},
+                        {"end_line",   {{"type", "integer"}, {"description", "Absolute last line number, 1-based inclusive, NOT a line count. Must be >= start_line (default: end of file)"}}},
                         {"append_loc", {{"type", "boolean"}, {"description", "Prefix each line with its line number"}}},
                     }},
                     {"required", json::array({"path"})},
@@ -926,6 +926,11 @@ struct server_tool_read_file : server_tool {
             };
         }
 
+        if (start_line < 1 || (end_line != -1 && end_line < start_line)) {
+            return {{"error", "Invalid line range: start_line must be >= 1; end_line must be >= start_line "
+                              "or -1 for end of file. end_line is an absolute line number, not a count."}};
+        }
+
         if (file_size > SERVER_TOOL_READ_FILE_MAX_SIZE && end_line == -1) {
             return {{"error", string_format(
                 "file too large (%zu bytes, max %zu). Use start_line/end_line to read a portion.",
@@ -961,6 +966,9 @@ struct server_tool_read_file : server_tool {
             result += out_line;
         }
 
+        if (start_line > 1 && lineno < start_line) {
+            return {{"error", string_format("start_line %d is beyond end of file (%d lines).", start_line, lineno)}};
+        }
         return {{"plain_text_response", result}};
     }
 };
@@ -1256,7 +1264,10 @@ struct server_tool_exec_shell_command : server_tool {
             {"type", "function"},
             {"function", {
                 {"name", name},
-                {"description", "Execute a shell command and return its output (stdout and stderr combined)."},
+                {"description",
+                    "Execute a shell command and return its output (stdout and stderr combined). Prefer read/search/edit tools "
+                    "for file inspection and changes. Use shell commands for verification, builds, tests, and narrowly scoped "
+                    "repository inspection; avoid broad destructive or bulk rewrite commands."},
                 {"parameters", {
                     {"type", "object"},
                     {"properties", {
@@ -1334,7 +1345,10 @@ struct server_tool_write_file : server_tool {
             {"type", "function"},
             {"function", {
                 {"name", name},
-                {"description", "Write content to a file, creating it (including parent directories) if it does not exist. May use with edit_file for more complex edits."},
+                {"description",
+                    "Create a new file or deliberately replace a whole existing file. "
+                    "For normal code changes, read the file first and use edit_file for targeted replacements. "
+                    "Do not use this tool for cosmetic rewrites, partial edits, or large existing files unless full replacement was explicitly intended."},
                 {"parameters", {
                     {"type", "object"},
                     {"properties", {
@@ -1380,7 +1394,9 @@ struct server_tool_edit_file : server_tool {
                 {"description",
                     "Edit a file using exact text replacement. Each edits[].old_text must be unique in the file "
                     "and is matched against the original content, not incrementally. Merge nearby changes into "
-                    "one edit instead of overlapping edits. Use write_file to replace the whole file."},
+                    "one edit instead of overlapping edits. Inspect the relevant file first, keep replacements small, "
+                    "and verify the diff after editing. Do not use broad token removals in code or CSS. Use write_file "
+                    "only for intentional whole-file replacement."},
                 {"parameters", {
                     {"type", "object"},
                     {"properties", {
