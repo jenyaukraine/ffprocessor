@@ -20,6 +20,10 @@ It uses the existing llama.cpp Web UI. PenguinHarness is optional.
 - Streaming tool names with shared prefixes are not published prematurely.
   A tool-call opener also ends reasoning when the model omits `</think>`.
 - Invalid read_file line ranges return actionable errors, not empty successes.
+- Spark's native C++ grammar constrains non-string tagged arguments with their
+  JSON schemas. Nested `edit_file.edits` values must contain properly escaped
+  JSON strings; malformed code payloads are prevented during generation rather
+  than repaired after generation. Raw top-level string arguments remain literal.
 
 These are integration changes, not new model weights or a guarantee of agent
 quality. Review file changes and test results before accepting them.
@@ -241,6 +245,15 @@ tests; type checking and targeted lint checks also pass. These checks cover the
 new limits and rejection paths, not a claim that exploration is always optimal.
 
 ### Checks
+
+The Spark parser regression includes multiline code with quotes, tabs and
+backslashes, with incremental parsing checked at every UTF-8-safe prefix. Negative
+grammar tests reject literal newlines inside JSON strings, unescaped quotes,
+wrong nested value types and missing required nested fields. The old grammar
+accepted the literal-newline case; the corrected grammar rejects it. This fixes
+a demonstrated parser constraint gap, not every possible model/tool failure.
+The API smoke additionally applies a multiline PHP replacement to a temporary
+fixture and compares the saved bytes, including unchanged surrounding content.
 
 With the server running on the same machine, from the repository root:
 

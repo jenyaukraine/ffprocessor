@@ -3290,7 +3290,8 @@ static common_chat_params common_chat_params_init_spark2_5(const common_chat_tem
                 for (const auto & [prop_name, prop_schema] : params.at("properties").items()) {
                     auto value = schema_info.resolves_to_string(prop_schema)
                         ? p.tool_arg_string_value(p.until(ARG_VALUE_END))
-                        : p.tool_arg_value(p.until(ARG_VALUE_END));
+                        : p.tool_arg_json_value(p.schema(p.json(), "spark2-5-arg-" + name + "-" + prop_name + "-schema",
+                                                         prop_schema, false));
 
                     arg_choice |= p.rule("spark2-5-arg-" + name + "-" + prop_name,
                                          p.tool_arg(

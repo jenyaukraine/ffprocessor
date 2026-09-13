@@ -4409,6 +4409,46 @@ static void test_template_output_peg_parsers(bool detailed_debug) {
     {
         auto tst = peg_tester("models/templates/Spark2.5.jinja", detailed_debug);
 
+        const common_chat_tool edit_tool{
+            "edit_file", "Replace code exactly",
+            R"({"type":"object","properties":{"path":{"type":"string"},"edits":{"type":"array","items":{"type":"object","properties":{"old_text":{"type":"string"},"new_text":{"type":"string"}},"required":["old_text","new_text"]}}},"required":["path","edits"]})"
+        };
+        const std::string old_code = "function load() {\n\treturn \"C:\\project\\file.php\";\n}\n";
+        const std::string new_code = "function load() {\n\treturn ['message' => \"quoted \\\"value\\\"\", 'ok' => true];\n}\n";
+        const json edits = json::array({{{"old_text", old_code}, {"new_text", new_code}}});
+        const std::string edit_prefix =
+            "<tool_call>edit_file<arg_key>path</arg_key><arg_value>C:\\project\\file.php</arg_value>"
+            "<arg_key>edits</arg_key><arg_value>";
+        const std::string edit_suffix = "</arg_value></tool_call>";
+        tst.test(edit_prefix + edits.dump() + edit_suffix)
+            .enable_thinking(false)
+            .tools({ edit_tool })
+            .expect_tool_calls({{ "edit_file", json({{"path", "C:\\project\\file.php"}, {"edits", edits}}).dump(), {} }})
+            .run();
+
+        auto edit_templates = read_templates("models/templates/Spark2.5.jinja");
+        common_chat_templates_inputs edit_inputs;
+        edit_inputs.messages = { message_user };
+        edit_inputs.tools = { edit_tool };
+        edit_inputs.enable_thinking = false;
+        const auto edit_params = common_chat_templates_apply(edit_templates.get(), edit_inputs);
+        auto valid_grammar = build_grammar(edit_params.grammar);
+        if (!valid_grammar || !match_string(edit_prefix + edits.dump() + edit_suffix, valid_grammar.get())) {
+            LOG_ERR("Spark grammar rejected a valid code edit\n");
+            throw std::runtime_error("Spark grammar rejected a valid code edit");
+        }
+        for (const auto & invalid_edits : {
+                std::string("[{\"old_text\":\"line one\nline two\",\"new_text\":\"ok\"}]"),
+                std::string(R"([{"old_text":"return "value";","new_text":"ok"}])"),
+                std::string(R"([{"old_text":"ok","new_text":123}])"),
+                std::string(R"([{"old_text":"ok"}])") }) {
+            auto grammar = build_grammar(edit_params.grammar);
+            if (!grammar || match_string(edit_prefix + invalid_edits + edit_suffix, grammar.get())) {
+                LOG_ERR("Spark grammar accepted invalid edits: %s\n", invalid_edits.c_str());
+                throw std::runtime_error("Spark grammar accepted invalid edits: " + invalid_edits);
+            }
+        }
+
         tst.test("Need to inspect the file.<tool_call>special_function"
                  "<arg_key>arg1</arg_key><arg_value>1</arg_value></tool_call>")
             .enable_thinking(true)

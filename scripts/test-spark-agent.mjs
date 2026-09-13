@@ -121,4 +121,23 @@ assert(finished, 'Agent did not finish within 8 turns');
 assert(edits > 0, 'Agent only talked; no edit_file call');
 assert(readsAfterEdit > 0, 'Agent did not verify the saved file');
 assert.deepEqual(JSON.parse(await readFile(fixture, 'utf8')), { max_retries: 2, keep: 'unchanged' });
-console.log('PASS: streaming, bounded reasoning, multi-turn tool replay, actual edit and read-back');
+
+// Exercise nested JSON string escaping, not just a numeric setting replacement.
+const codeFixture = path.join(cwd, 'example.php');
+const oldCode = 'function load() {\n\treturn "C:\\project\\file.php";\n}\n';
+const newCode = 'function load() {\n\treturn ["path" => "C:\\project\\file.php", "message" => "quoted \\\"value\\\""];\n}\n';
+await writeFile(codeFixture, '<?php\n' + oldCode + '// keep unchanged\n');
+const codeReply = await completion([
+    { role: 'system', content: 'Call edit_file once with exactly the supplied path and replacement strings. Do not describe the change or run other tools.' },
+    { role: 'user', content: `Apply this exact replacement: ${JSON.stringify({ path: codeFixture, edits: [{ old_text: oldCode, new_text: newCode }] })}` },
+], tools.filter(t => t.function.name === 'edit_file'), true);
+assert.equal(codeReply.tool_calls?.length, 1, 'Expected one code edit');
+const codeCall = codeReply.tool_calls[0];
+assert.equal(codeCall.function.name, 'edit_file');
+const codeParams = JSON.parse(codeCall.function.arguments);
+assert.equal(path.resolve(cwd, codeParams.path), codeFixture, 'Tool tried to access outside code fixture');
+assert.equal(codeParams.edits.length, 1, 'Expected one replacement');
+const codeResult = await (await request('/tools', { tool: 'edit_file', params: codeParams }, { 'x-tool-cwd': cwd })).json();
+assert(!codeResult.error, JSON.stringify(codeResult));
+assert.equal(await readFile(codeFixture, 'utf8'), '<?php\n' + newCode + '// keep unchanged\n');
+console.log('PASS: streaming, bounded reasoning, multi-turn tool replay, actual edit/read-back, multiline code escaping');
