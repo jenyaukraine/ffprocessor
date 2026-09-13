@@ -70,6 +70,7 @@ The launcher defaults to one slot and 65536 context tokens. Adjust for your GPU:
 set SPARK_CTX=131072
 set SPARK_PARALLEL=1
 set SPARK_FLASH_ATTN=on
+set SPARK_UBATCH=1024
 scripts\run-spark-agent.cmd "C:\models\Spark-X2.5-4B-Q4_K_M.gguf" "D:\my-project"
 ```
 
@@ -110,7 +111,8 @@ The client executes tool calls and returns tool results; a completion endpoint
 alone is not an autonomous coding agent.
 
 Direct `/completion` measurements on RX 7900 XTX, Spark X2.5 4B Q4_K_M,
-F16 KV cache, 256 generated tokens, seed 42, temperature 0, no prompt reuse:
+F16 KV cache, microbatch 512, 256 generated tokens, seed 42, temperature 0,
+no prompt reuse:
 
 | Prompt tokens | 400000 context / 3 slots / FA auto | 131072 context / 1 slot / FA on |
 | --- | ---: | ---: |
@@ -131,6 +133,38 @@ Reproduce with an idle server using the profile above:
 
 ```bat
 node scripts\bench-spark-context.mjs http://127.0.0.1:8080
+```
+
+#### Batch tuning
+
+Additional native `llama-bench` runs stopped the server to avoid competing GPU
+inference. Flash attention, F16 KV, batch 2048 and 8 CPU threads were unchanged.
+The first two configurations used three repetitions, the last used five:
+
+| Microbatch | Prompt processing, 4096 tokens | Generation, empty starting context |
+| --- | ---: | ---: |
+| 512 | 4034.92 +/- 11.55 tokens/s | 197.61 +/- 0.62 tokens/s |
+| 1024 | 4189.64 +/- 6.06 tokens/s | 195.53 +/- 0.39 tokens/s |
+| 2048 | 4140.38 +/- 9.00 tokens/s | 195.01 +/- 1.58 tokens/s |
+
+Four CPU threads and `GGML_VK_MAX_NODES_PER_SUBMIT=500` did not produce a useful
+overall gain and were not retained. The tested profile above uses microbatch
+1024 for a modest prefill improvement, not faster answer generation. The portable
+launcher retains 512 unless `SPARK_UBATCH` is set, for smaller-memory machines.
+The model weights and cache precision were not changed.
+
+With microbatch 1024 the direct server test measured 164.32, 147.91 and 125.42
+decode tokens/s at 1205, 12005 and 36005 prompt tokens. At 36005 tokens, prefill
+took 13.11 seconds versus 13.51 with microbatch 512. Process GPU counters read
+7.62 GiB dedicated and 0.34 GiB shared memory. This is a small prefill gain,
+not evidence that filling free VRAM improves decoding. The streaming and real
+read/edit/read smoke test passed again.
+
+Reproduce the batch comparison with other GPU inference stopped:
+
+```bat
+cmake --build build --config Release --target llama-bench
+build\bin\Release\llama-bench.exe -m "C:\models\Spark-X2.5-4B-Q4_K_M.gguf" -ngl 999 -fa on -p 4096 -n 256 -b 2048 -ub 512,1024,2048 -t 8 -r 5 -o json
 ```
 
 ### Web UI context and exploration guard

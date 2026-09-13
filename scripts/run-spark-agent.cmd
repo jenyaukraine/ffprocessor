@@ -25,12 +25,14 @@ if not defined SPARK_PARALLEL set "SPARK_PARALLEL=1"
 if not defined SPARK_PORT set "SPARK_PORT=8080"
 if not defined SPARK_REASONING_BUDGET set "SPARK_REASONING_BUDGET=512"
 if not defined SPARK_FLASH_ATTN set "SPARK_FLASH_ATTN=auto"
+if not defined SPARK_UBATCH set "SPARK_UBATCH=512"
 
 pushd "%~2" || exit /b 1
 echo Web UI: http://127.0.0.1:%SPARK_PORT%/
 "%SERVER%" -m "%MODEL%" -ngl 999 ^
   -c "%SPARK_CTX%" -np "%SPARK_PARALLEL%" ^
   -fa "%SPARK_FLASH_ATTN%" ^
+  -b 2048 -ub "%SPARK_UBATCH%" ^
   --alias spark-x2.5 --host 127.0.0.1 --port "%SPARK_PORT%" ^
   --agent --reasoning on --reasoning-format deepseek --reasoning-budget "%SPARK_REASONING_BUDGET%"
 set "SERVER_EXIT=%ERRORLEVEL%"
@@ -39,5 +41,5 @@ exit /b %SERVER_EXIT%
 
 :usage
 echo Usage: %~nx0 "C:\models\Spark-X2.5-4B-Q4_K_M.gguf" "D:\my-project"
-echo Optional environment: SPARK_CTX, SPARK_PARALLEL, SPARK_PORT, SPARK_REASONING_BUDGET, SPARK_FLASH_ATTN, LLAMA_SERVER_EXE
+echo Optional environment: SPARK_CTX, SPARK_PARALLEL, SPARK_PORT, SPARK_REASONING_BUDGET, SPARK_FLASH_ATTN, SPARK_UBATCH, LLAMA_SERVER_EXE
 exit /b 2
