@@ -15,6 +15,7 @@ import type { DatabaseMessageExtra, SteeringMessage } from '$lib/types';
 import { SvelteMap } from 'svelte/reactivity';
 
 export class AgenticGates {
+	private continueReasons = new SvelteMap<string, string>();
 	/** Resolve functions for pending continue Promises; nothing derives from this map */
 	private continueResolvers = new SvelteMap<string, (shouldContinue: boolean) => void>();
 	/** Dedicated reactive state for pending continue requests (turn limit reached) */
@@ -38,6 +39,7 @@ export class AgenticGates {
 		this.pendingPermissions.set(conversationId, null);
 		this.permissionResolvers.delete(conversationId);
 		this.pendingContinueRequests.set(conversationId, false);
+		this.continueReasons.delete(conversationId);
 		this.continueResolvers.delete(conversationId);
 		this.steeringMessages.delete(conversationId);
 	}
@@ -61,6 +63,10 @@ export class AgenticGates {
 		this.steeringMessages.delete(conversationId);
 
 		return msg;
+	}
+
+	getContinueReason(conversationId: string): string | undefined {
+		return this.continueReasons.get(conversationId);
 	}
 
 	getPendingContinueRequest(conversationId: string): boolean {
@@ -97,7 +103,15 @@ export class AgenticGates {
 		this.steeringMessages.set(conversationId, { content, extras });
 	}
 
-	async requestContinue(conversationId: string, signal?: AbortSignal): Promise<boolean> {
+	async requestContinue(
+		conversationId: string,
+		signal?: AbortSignal,
+		reason?: string
+	): Promise<boolean> {
+		this.continueReasons.delete(conversationId);
+
+		if (reason) this.continueReasons.set(conversationId, reason);
+
 		this.pendingContinueRequests.set(conversationId, true);
 
 		return new Promise<boolean>((resolve) => {

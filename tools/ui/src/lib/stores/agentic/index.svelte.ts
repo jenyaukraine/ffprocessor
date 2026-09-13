@@ -79,6 +79,13 @@ import {
 	getAudioInputFormat,
 	isAbortError
 } from '$lib/utils';
+import {
+	agentCompletionLimit,
+	AgentTurnTruncatedError,
+	EXPLORATION_REMINDER,
+	ExplorationGuard,
+	hasInvalidToolArguments
+} from '$lib/utils/agentic-context';
 import { SvelteMap } from 'svelte/reactivity';
 
 function createDefaultSession(): AgenticSession {
@@ -246,6 +253,10 @@ class AgenticStore {
 			enabled: hasTools && DEFAULT_AGENTIC_CONFIG.enabled,
 			maxTurns
 		};
+	}
+
+	getContinueReason(conversationId: string): string | undefined {
+		return this.gates.getContinueReason(conversationId);
 	}
 
 	getCurrentTurn(conversationId: string): number {
@@ -484,9 +495,12 @@ class AgenticStore {
 			updateToolResultMessage
 		} = callbacks;
 		const sessionMessages: AgenticMessage[] = toAgenticMessages(messages);
+		const exploration = new ExplorationGuard();
 
 		let capturedTimings: ChatMessageTimings | undefined;
 		let totalToolCallCount = 0;
+		let invalidToolTurns = 0;
+		let truncatedTurns = 0;
 
 		const agenticTimings: ChatMessageAgenticTimings = {
 			llm: { predicted_ms: 0, predicted_n: 0, prompt_ms: 0, prompt_n: 0 },
@@ -502,9 +516,21 @@ class AgenticStore {
 		let turn = 0;
 
 		while (true) {
-			if (turn >= maxTurns) {
+			const checkpoint = exploration.checkpoint();
+
+			if (checkpoint === 'remind') {
+				sessionMessages.push({ content: EXPLORATION_REMINDER, role: MessageRole.SYSTEM });
+			}
+
+			if (turn >= maxTurns || checkpoint === 'pause') {
 				// Turn limit reached - ask user whether to continue
-				const shouldContinue = await this.gates.requestContinue(conversationId, signal);
+				const shouldContinue = await this.gates.requestContinue(
+					conversationId,
+					signal,
+					checkpoint === 'pause'
+						? '16 consecutive read/search calls without another successful action. Continue exploring?'
+						: undefined
+				);
 
 				// Yield to allow Svelte to flush the UI update
 				await new Promise((r) => setTimeout(r, 0));
@@ -517,6 +543,7 @@ class AgenticStore {
 
 				// User chose to continue - extend the limit
 				turn = 0;
+				exploration.reset();
 			}
 
 			this.updateSession(conversationId, { currentTurn: turn + 1 });
@@ -528,8 +555,8 @@ class AgenticStore {
 				return;
 			}
 
-			// For turns > 0, create a new assistant message via callback
-			if (turn > 0 && createAssistantMessage) {
+			// Continuing after a gate still needs a fresh message, even when the turn limit resets.
+			if ((turn > 0 || totalToolCallCount > 0) && createAssistantMessage) {
 				await createAssistantMessage();
 			}
 
@@ -552,6 +579,7 @@ class AgenticStore {
 					sessionMessages as ApiChatMessageData[],
 					{
 						...options,
+						max_tokens: agentCompletionLimit(options.max_tokens),
 						onChunk: (chunk: string) => {
 							turnContent += chunk;
 							onChunk?.(chunk);
@@ -647,6 +675,27 @@ class AgenticStore {
 
 				const normalizedError = error instanceof Error ? error : new Error('LLM stream error');
 
+				if (error instanceof AgentTurnTruncatedError && truncatedTurns++ === 0) {
+					const failure =
+						'The previous response reached its token limit before completion. No tools from that turn were executed. Retrying with a smaller step.';
+
+					await onAssistantTurnComplete?.(
+						`${turnContent}\n\n${failure}`,
+						turnReasoningContent || undefined,
+						turnTimings,
+						undefined
+					);
+					sessionMessages.push({ content: failure, role: MessageRole.ASSISTANT });
+					sessionMessages.push({
+						content:
+							'Your previous response was truncated. Do not repeat the analysis or a full-file rewrite. Use one small, complete tool call for the next necessary action. For an answer-only task, give a concise answer. No calls from the truncated turn ran.',
+						role: MessageRole.SYSTEM
+					});
+					turn++;
+
+					continue;
+				}
+
 				// preserve partial output as is, the outer error dialog informs the user separately
 				await onAssistantTurnComplete?.(
 					turnContent,
@@ -712,6 +761,33 @@ class AgenticStore {
 
 			// Normalize and save assistant turn with tool calls
 			const normalizedCalls = this.normalizeToolCalls(turnToolCalls);
+
+			// Invalid JSON cannot be replayed through the model's chat template.
+			// Reject the whole batch before persisting or executing any of its calls.
+			if (hasInvalidToolArguments(normalizedCalls)) {
+				const failure =
+					'Tool call rejected: arguments were not a valid JSON object. No tools from this batch were executed.';
+
+				await onAssistantTurnComplete?.(
+					`${turnContent}\n\n${failure}`,
+					turnReasoningContent || undefined,
+					turnTimings,
+					undefined
+				);
+				invalidToolTurns++;
+
+				if (invalidToolTurns >= 2) throw new Error(`${failure} Automatic retry also failed.`);
+
+				sessionMessages.push({ content: failure, role: MessageRole.ASSISTANT });
+				sessionMessages.push({
+					content:
+						'The previous tool batch was rejected before execution because its arguments were malformed. Retry the intended tool call once with a complete JSON object matching the tool schema. Do not claim the rejected action succeeded.',
+					role: MessageRole.SYSTEM
+				});
+				turn++;
+
+				continue;
+			}
 
 			if (normalizedCalls.length === 0) {
 				await onAssistantTurnComplete?.(
@@ -913,6 +989,8 @@ class AgenticStore {
 				this.updateSession(conversationId, { executingToolCallId: null });
 
 				const toolDurationMs = performance.now() - toolStartTime;
+
+				exploration.record(toolName, toolSuccess);
 				const toolTiming: ChatMessageToolCallTiming = {
 					duration_ms: Math.round(toolDurationMs),
 					name: toolCall.function.name,

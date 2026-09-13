@@ -5,14 +5,15 @@
 
 	interface Props {
 		onDecision: (shouldContinue: boolean) => void;
+		reason?: string;
 	}
 
-	let { onDecision }: Props = $props();
+	let { onDecision, reason }: Props = $props();
 </script>
 
 <ChatMessageActionCard icon={RotateCw}>
 	{#snippet message()}
-		Agentic turn limit reached. Continue?
+		{reason ?? 'Agentic turn limit reached. Continue?'}
 	{/snippet}
 
 	{#snippet actions()}

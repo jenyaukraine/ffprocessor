@@ -42,6 +42,7 @@ import type {
 	ApiStreamSession
 } from '$lib/types/api';
 import { isAbortError } from '$lib/utils/abort';
+import { AgentTurnTruncatedError, compactToolContext } from '$lib/utils/agentic-context';
 import { ApiError } from '$lib/utils/api-fetch';
 import { getAuthHeaders, getJsonHeaders } from '$lib/utils/api-headers';
 import { toChatRequestMessage } from '$lib/utils/chat-request-message';
@@ -444,7 +445,8 @@ export class ChatService {
 		conversationId?: string,
 		abortSignal?: AbortSignal,
 		onConnectionState?: (state: StreamConnectionState) => void,
-		streamModel?: string | null
+		streamModel?: string | null,
+		requireComplete = false
 	): Promise<void> {
 		let reader = response.body?.getReader();
 
@@ -478,6 +480,7 @@ export class ChatService {
 		let aggregatedToolCalls: ApiChatCompletionToolCall[] = [];
 		let lastTimings: ChatMessageTimings | undefined;
 		let streamFinished = false;
+		let finishReason: string | null = null;
 		let modelEmitted = false;
 		let idEmitted = false;
 		let toolCallIndexOffset = 0;
@@ -628,6 +631,9 @@ export class ChatService {
 								const choice = parsed.choices?.[0];
 								const content = choice?.delta?.content;
 								const reasoningContent = choice?.delta?.reasoning_content;
+
+								if (choice?.finish_reason) finishReason = choice.finish_reason;
+
 								const toolCalls = choice?.delta?.tool_calls;
 								const timings = parsed.timings;
 								const promptProgress = parsed.prompt_progress;
@@ -750,6 +756,10 @@ export class ChatService {
 				const finalToolCalls =
 					aggregatedToolCalls.length > 0 ? JSON.stringify(aggregatedToolCalls) : undefined;
 
+				if (finishReason === 'length' && (requireComplete || aggregatedToolCalls.length > 0)) {
+					throw new AgentTurnTruncatedError();
+				}
+
 				onComplete?.(
 					aggregatedContent,
 					fullReasoningContent || undefined,
@@ -847,8 +857,9 @@ export class ChatService {
 		const normalizedMessages: ApiChatMessageData[] =
 			await ChatService.normalizeMessagesForApi(messages);
 		const requestBody: Record<string, unknown> = {
-			messages: normalizedMessages.map((msg: ApiChatMessageData) => {
+			messages: compactToolContext(normalizedMessages).map((msg: ApiChatMessageData) => {
 				const mapped = toChatRequestMessage(msg, excludeReasoning);
+
 				if (excludeReasoning && !msg.tool_calls?.length) {
 					mapped.content = ChatService.stripReasoningContent(msg.content);
 				}
@@ -1098,7 +1109,7 @@ export class ChatService {
 		}
 
 		const requestBody: ApiChatCompletionRequest = {
-			messages: normalizedMessages.map((msg) =>
+			messages: compactToolContext(normalizedMessages).map((msg) =>
 				toChatRequestMessage(msg, excludeReasoningFromContext)
 			),
 			return_progress: stream ? true : undefined,
@@ -1250,7 +1261,8 @@ export class ChatService {
 					conversationId,
 					signal,
 					onConnectionState,
-					options.model
+					options.model,
+					!!tools?.length
 				);
 
 				return;

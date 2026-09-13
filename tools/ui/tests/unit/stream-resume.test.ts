@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // node env unit project has no DOM, install a minimal localStorage backed by a Map
 beforeAll(() => {
@@ -23,6 +23,87 @@ beforeAll(() => {
 
 import { STREAM_RESUME_LOCALSTORAGE_KEY_PREFIX } from '$lib/constants';
 import { ChatService } from '$lib/services/chat.service';
+
+describe('streamed agent completion limits', () => {
+	it.each([true, false])(
+		'rejects length-truncated agent output (tool call=%s)',
+		async (withTool) => {
+			const delta = withTool
+				? {
+						tool_calls: [
+							{
+								function: { arguments: '{"path":"a.ts",', name: 'edit_file' },
+								id: 'edit_1',
+								index: 0,
+								type: 'function'
+							}
+						]
+					}
+				: { content: 'Still thinking' };
+			const response = new Response(
+				`data: ${JSON.stringify({ choices: [{ delta }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\ndata: [DONE]\n\n`
+			);
+			const complete = vi.fn();
+			const error = vi.fn();
+
+			await expect(
+				ChatService.handleStreamResponse(
+					response,
+					undefined,
+					complete,
+					error,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					true
+				)
+			).rejects.toThrow('token limit');
+			expect(complete).not.toHaveBeenCalled();
+			expect(error).toHaveBeenCalledOnce();
+		}
+	);
+	it('keeps ordinary truncated text streaming usable', async () => {
+		const complete = vi.fn();
+		const response = new Response(
+			'data: {"choices":[{"delta":{"content":"Hello"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'
+		);
+
+		await ChatService.handleStreamResponse(response, undefined, complete);
+		expect(complete).toHaveBeenCalledWith('Hello', undefined, undefined, undefined);
+	});
+	it('completes valid incremental tool output', async () => {
+		const complete = vi.fn();
+		const delta = vi.fn();
+		const response = new Response(
+			'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"r1","type":"function","function":{"name":"read_file","arguments":"{}"}}]}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n'
+		);
+
+		await ChatService.handleStreamResponse(
+			response,
+			undefined,
+			complete,
+			undefined,
+			undefined,
+			delta,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			true
+		);
+		expect(delta).toHaveBeenCalled();
+		expect(JSON.parse(complete.mock.calls[0][3])[0].function.name).toBe('read_file');
+	});
+});
 
 describe('ChatService stream resume', () => {
 	beforeEach(() => {

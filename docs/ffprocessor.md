@@ -67,12 +67,13 @@ are not stopped automatically.
 The launcher defaults to one slot and 65536 context tokens. Adjust for your GPU:
 
 ```bat
-set SPARK_CTX=400000
-set SPARK_PARALLEL=3
+set SPARK_CTX=131072
+set SPARK_PARALLEL=1
+set SPARK_FLASH_ATTN=on
 scripts\run-spark-agent.cmd "C:\models\Spark-X2.5-4B-Q4_K_M.gguf" "D:\my-project"
 ```
 
-That larger configuration was tested locally; it is not a requirement. The
+This profile was tested on the RX 7900 XTX; it is not a requirement. The
 total context is shared between slots. Larger histories and parallel requests
 can reduce responsiveness. Keep the server on loopback when using local tools.
 `SPARK_REASONING_BUDGET` overrides the launcher's 512-token reasoning budget.
@@ -99,6 +100,113 @@ their previous model. Project config, credentials, histories, and local paths
 from the development machine are not included in this fork.
 
 ## Validation and limits
+
+### Native Vulkan profile (2026-09-14)
+
+The native Release build uses Vulkan with compiler optimization enabled and
+Vulkan validation/debug instrumentation disabled. No extra API proxy is required:
+clients use `/v1/chat/completions` with SSE streaming and standard `tool_calls`.
+The client executes tool calls and returns tool results; a completion endpoint
+alone is not an autonomous coding agent.
+
+Direct `/completion` measurements on RX 7900 XTX, Spark X2.5 4B Q4_K_M,
+F16 KV cache, 256 generated tokens, seed 42, temperature 0, no prompt reuse:
+
+| Prompt tokens | 400000 context / 3 slots / FA auto | 131072 context / 1 slot / FA on |
+| --- | ---: | ---: |
+| 1205 | 161.05 tokens/s | 164.04 tokens/s |
+| 12005 | 129.61 tokens/s | 146.97 tokens/s |
+| 36005 | 92.20 tokens/s | 125.24 tokens/s |
+
+Windows process GPU counters changed from 16.08 to 7.37 GiB dedicated memory
+and 0.90 to 0.18 GiB shared memory. These counters are not proof of paging.
+The new profile retains roughly the old per-slot context but serves one request
+at a time. Other browser requests occurred between measurements; these are
+single-run decode timings, not isolated repeated benchmarks or end-to-end agent
+throughput. The profile changes multiple settings, so it does not isolate the
+effect of any single setting. No new inference-kernel optimization was made.
+Longer contexts still slow generation; 300 useful output tokens/s is not achieved.
+
+Reproduce with an idle server using the profile above:
+
+```bat
+node scripts\bench-spark-context.mjs http://127.0.0.1:8080
+```
+
+### Web UI context and exploration guard
+
+The bundled Web UI now projects read/search/get_info results into a smaller
+request context. Each text-only result is capped at 16,000 characters, retaining
+its beginning and end with an explicit omission notice. Above 64,000 characters
+of these results, older entries are shortened to 1,000 characters toward a
+32,000-character target. The latest four results remain protected from this
+second pass. These are character-based soft limits, not a tokenizer or a hard
+limit on the entire conversation. Large user messages, reasoning, shell output,
+and multimodal results can still fill the context.
+
+Full results remain in saved chat history. Tool-call IDs, arguments and reasoning
+replay remain intact; omitted text must be reread before editing it. No automatic
+claim that a file is correct is generated. The same projection is used for normal
+requests and KV pre-encoding. Changing an older prompt prefix can require some
+prefill again; this does not change model weights or guarantee higher tokens/s.
+
+After eight consecutive built-in inspection calls, the agent receives a
+conditional reminder to act on the user's request or report findings. After 16,
+the UI asks whether to continue exploration. This checkpoint runs only after a
+whole tool batch has returned, so a batch can exceed the threshold. Successful
+non-inspection tools and manual continuation reset the counter; failed edits do
+not. This is not semantic proof of progress (a shell command can just read files),
+and legitimate reviews may also reach the checkpoint. It never forces an edit.
+These policies apply to this Web UI, not external API clients such as Penguin.
+Rebuild the UI and embedded server, then reload the browser to activate them.
+
+Agent turns default to 4,096 completion tokens when the UI has no positive limit
+configured (including its previous unlimited setting). An explicit positive
+limit is respected. A streamed agent turn ending with `finish_reason=length`
+does not execute its possibly incomplete tool calls. The UI allows one retry
+asking for a smaller complete action; a second truncated turn stops with an error.
+This total budget includes reasoning and answer/tool output; it does not replace
+the server's separate reasoning budget.
+
+Malformed tool arguments are rejected before any call in the batch is executed
+or stored as a replayable tool call. The UI reports the rejection and allows one
+automatic retry per flow; a second malformed batch stops with an error. Arguments
+are never silently repaired or used to guess a file edit.
+
+### LM Studio comparison (2026-09-14)
+
+This is a comparison with the public LM Studio TypeScript SDK, not an audit of
+the complete desktop application or its model-specific native runtime. The
+inspected SDK revision was `c47dce0d37a3008d3e4c393e40452825a2a9790b`.
+
+- [act.ts](https://github.com/lmstudio-ai/lmstudio-js/blob/c47dce0d37a3008d3e4c393e40452825a2a9790b/packages/lms-client/src/llm/act.ts)
+  validates tool parameters, executes tools sequentially by default, appends
+  ordered results to history and exposes prediction-round limits. Our loop has
+  corresponding sequencing and limits, but does not implement the SDK's full
+  tool-schema validation and callback surface. The SDK may execute a completed
+  tool request while generation continues; our UI waits for the full turn.
+- [LLMPredictionConfig.ts](https://github.com/lmstudio-ai/lmstudio-js/blob/c47dce0d37a3008d3e4c393e40452825a2a9790b/packages/lms-shared-types/src/llm/LLMPredictionConfig.ts)
+  separates total completion and reasoning budgets, and exposes `stopAtLimit`,
+  `truncateMiddle` and `rollingWindow` context policies. Our read-result excerpts
+  are a narrower policy, not equivalent whole-conversation context management.
+- The public SDK's `act` loop appends tool outputs; it does not automatically
+  decide a file is correct and remove its contents from history.
+- [Spark's official README](https://github.com/XHToken/Spark-X2.5)
+  documents LM Studio deployment and names coding harness integrations; it does
+  not establish this fork's Web UI as the reference coding harness.
+
+No LM Studio A/B benchmark has been run. Passing the API smoke test does not
+establish parity with LM Studio or reliable autonomous project maintenance.
+The first full Web UI test during this change exposed malformed edit arguments
+and a subsequent history replay failure, despite the API smoke passing. This
+motivated the pre-execution argument check and bounded retry described above.
+The subsequent completed Web UI run changed `max_retries` from 2 to 3, preserved
+the other field and reread the file in 14 seconds. It still made three unnecessary
+shell calls before the read/edit/read sequence. The unit suite now has 703 passing
+tests; type checking and targeted lint checks also pass. These checks cover the
+new limits and rejection paths, not a claim that exploration is always optimal.
+
+### Checks
 
 With the server running on the same machine, from the repository root:
 

@@ -242,7 +242,10 @@
 	{/if}
 
 	{#if showContinue}
-		<ChatMessageActionCardContinueRequest onDecision={handleContinue} />
+		<ChatMessageActionCardContinueRequest
+			onDecision={handleContinue}
+			reason={agenticStore.getContinueReason(message.convId)}
+		/>
 	{/if}
 </div>
 
