@@ -18,10 +18,6 @@ export class AgentTurnTruncatedError extends Error {
 	}
 }
 
-export function agentCompletionLimit(configured?: number | null): number {
-	return configured && Number.isFinite(configured) && configured > 0 ? configured : 4096;
-}
-
 function excerpt(text: string, limit: number): string {
 	if (text.length <= limit) return text;
 
@@ -100,9 +96,7 @@ export class ExplorationGuard {
 	private reads = 0;
 	private reminded = false;
 
-	checkpoint(): 'continue' | 'remind' | 'pause' {
-		if (this.reads >= 16) return 'pause';
-
+	checkpoint(): 'continue' | 'remind' {
 		if (this.reads >= 8 && !this.reminded) {
 			this.reminded = true;
 

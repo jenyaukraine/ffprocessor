@@ -1,7 +1,6 @@
 import { ContentPartType, MessageRole, ToolCallType } from '$lib/enums';
 import type { ApiChatMessageData } from '$lib/types/api';
 import {
-	agentCompletionLimit,
 	compactToolContext,
 	ExplorationGuard,
 	hasInvalidToolArguments
@@ -157,16 +156,7 @@ describe('exploration checkpoints', () => {
 		expect(hasInvalidToolArguments(calls)).toBe(false);
 		expect(calls[0].function.arguments).toBe('{"edits":[{"old":"x","new":"y"}]}');
 	});
-	it.each([undefined, null, -1, 0, Infinity, NaN])(
-		'bounds unlimited completion setting %s',
-		(value) => {
-			expect(agentCompletionLimit(value)).toBe(4096);
-		}
-	);
-	it('respects a positive configured completion limit', () => {
-		expect(agentCompletionLimit(8192)).toBe(8192);
-	});
-	it('reminds once after 8 reads and pauses after 16, including failed reads', () => {
+	it('reminds once after 8 reads without interrupting further exploration', () => {
 		const guard = new ExplorationGuard();
 
 		for (let i = 0; i < 7; i++) guard.record('read_file', true);
@@ -175,16 +165,16 @@ describe('exploration checkpoints', () => {
 		expect(guard.checkpoint()).toBe('remind');
 		expect(guard.checkpoint()).toBe('continue');
 		for (let i = 0; i < 8; i++) guard.record('file_glob_search', true);
-		expect(guard.checkpoint()).toBe('pause');
+		expect(guard.checkpoint()).toBe('continue');
 		guard.reset();
 		expect(guard.checkpoint()).toBe('continue');
 	});
 	it('failed edits do not count as progress, successful actions reset the streak', () => {
 		const guard = new ExplorationGuard();
 
-		for (let i = 0; i < 16; i++) guard.record('read_file', true);
+		for (let i = 0; i < 8; i++) guard.record('read_file', true);
 		guard.record('edit_file', false);
-		expect(guard.checkpoint()).toBe('pause');
+		expect(guard.checkpoint()).toBe('remind');
 		guard.record('edit_file', true);
 		expect(guard.checkpoint()).toBe('continue');
 	});

@@ -80,7 +80,6 @@ import {
 	isAbortError
 } from '$lib/utils';
 import {
-	agentCompletionLimit,
 	AgentTurnTruncatedError,
 	EXPLORATION_REMINDER,
 	ExplorationGuard,
@@ -522,15 +521,9 @@ class AgenticStore {
 				sessionMessages.push({ content: EXPLORATION_REMINDER, role: MessageRole.SYSTEM });
 			}
 
-			if (turn >= maxTurns || checkpoint === 'pause') {
+			if (turn >= maxTurns) {
 				// Turn limit reached - ask user whether to continue
-				const shouldContinue = await this.gates.requestContinue(
-					conversationId,
-					signal,
-					checkpoint === 'pause'
-						? '16 consecutive read/search calls without another successful action. Continue exploring?'
-						: undefined
-				);
+				const shouldContinue = await this.gates.requestContinue(conversationId, signal);
 
 				// Yield to allow Svelte to flush the UI update
 				await new Promise((r) => setTimeout(r, 0));
@@ -579,7 +572,6 @@ class AgenticStore {
 					sessionMessages as ApiChatMessageData[],
 					{
 						...options,
-						max_tokens: agentCompletionLimit(options.max_tokens),
 						onChunk: (chunk: string) => {
 							turnContent += chunk;
 							onChunk?.(chunk);

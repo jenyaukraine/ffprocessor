@@ -29,17 +29,17 @@
 	const REASONING_HEADER = 'Reasoning';
 	const REASONING_HEADER_PENDING = 'Reasoning...';
 	const REASONING_SUBTITLE_ERROR = 'Error';
-	const REASONING_SUBTITLE_CANCELLED = 'Cancelled';
+	const REASONING_SUBTITLE_INCOMPLETE = 'No final response';
 
 	const isPending = $derived(section.type === AgenticSectionType.REASONING_PENDING);
 	const title = $derived(isPending && isStreaming ? REASONING_HEADER_PENDING : REASONING_HEADER);
 	const subtitle = $derived.by(() => {
 		if (isPending && !isStreaming) {
-			return hasReasoningError ? REASONING_SUBTITLE_ERROR : REASONING_SUBTITLE_CANCELLED;
+			return hasReasoningError ? REASONING_SUBTITLE_ERROR : REASONING_SUBTITLE_INCOMPLETE;
 		}
 
 		if (section.wasInterrupted) {
-			return hasReasoningError ? REASONING_SUBTITLE_ERROR : REASONING_SUBTITLE_CANCELLED;
+			return hasReasoningError ? REASONING_SUBTITLE_ERROR : REASONING_SUBTITLE_INCOMPLETE;
 		}
 
 		return isStreaming ? '' : undefined;

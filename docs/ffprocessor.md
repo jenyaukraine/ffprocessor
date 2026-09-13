@@ -15,8 +15,8 @@ It uses the existing llama.cpp Web UI. PenguinHarness is optional.
 - Tool-call reasoning is retained in chat requests and cache pre-encoding even
   when ordinary reasoning is excluded from context. Existing missing reasoning
   is not fabricated or recovered from another conversation.
-- The Windows launcher enables reasoning with a 512-token budget per step and returns
-  it separately in `reasoning_content`.
+- The Windows launcher enables reasoning and returns it separately in
+  `reasoning_content`. Forced reasoning closure is disabled by default.
 - Streaming tool names with shared prefixes are not published prematurely.
   A tool-call opener also ends reasoning when the model omits `</think>`.
 - Invalid read_file line ranges return actionable errors, not empty successes.
@@ -81,7 +81,10 @@ scripts\run-spark-agent.cmd "C:\models\Spark-X2.5-4B-Q4_K_M.gguf" "D:\my-project
 This profile was tested on the RX 7900 XTX; it is not a requirement. The
 total context is shared between slots. Larger histories and parallel requests
 can reduce responsiveness. Keep the server on loopback when using local tools.
-`SPARK_REASONING_BUDGET` overrides the launcher's 512-token reasoning budget.
+`SPARK_REASONING_BUDGET` optionally sets a reasoning budget; the default `-1`
+lets reasoning finish naturally. The former 512-token default was too aggressive
+for project-level requests and has been removed. Without a reasoning budget,
+reasoning can be long; configured completion/context limits still apply.
 An explicit reasoning effort in a client can override the server default.
 Use a new chat for evaluation so old failed plans do not dominate the history.
 
@@ -189,22 +192,23 @@ requests and KV pre-encoding. Changing an older prompt prefix can require some
 prefill again; this does not change model weights or guarantee higher tokens/s.
 
 After eight consecutive built-in inspection calls, the agent receives a
-conditional reminder to act on the user's request or report findings. After 16,
-the UI asks whether to continue exploration. This checkpoint runs only after a
-whole tool batch has returned, so a batch can exceed the threshold. Successful
-non-inspection tools and manual continuation reset the counter; failed edits do
-not. This is not semantic proof of progress (a shell command can just read files),
-and legitimate reviews may also reach the checkpoint. It never forces an edit.
+conditional reminder to act on the user's request or report findings. This is
+advisory only: there is no automatic pause after 16 reads. Successful non-inspection
+tools and manual continuation reset the counter; failed edits do not. This is
+not semantic proof of progress (a shell command can just read files). It never
+forces an edit. The user's configured agent turn limit remains in effect.
 These policies apply to this Web UI, not external API clients such as Penguin.
 Rebuild the UI and embedded server, then reload the browser to activate them.
 
-Agent turns default to 4,096 completion tokens when the UI has no positive limit
-configured (including its previous unlimited setting). An explicit positive
-limit is respected. A streamed agent turn ending with `finish_reason=length`
+Agent turns respect the configured completion limit, including the server default
+or an explicit unlimited setting. The hidden 4,096-token override has been removed.
+A streamed agent turn ending with `finish_reason=length`
 does not execute its possibly incomplete tool calls. The UI allows one retry
 asking for a smaller complete action; a second truncated turn stops with an error.
 This total budget includes reasoning and answer/tool output; it does not replace
-the server's separate reasoning budget.
+the server's separate reasoning budget. A reasoning-only response is labelled
+`No final response`, not `Cancelled`: absence of answer text does not establish
+that the user cancelled the generation.
 
 Malformed tool arguments are rejected before any call in the batch is executed
 or stored as a replayable tool call. The UI reports the rejection and allows one
@@ -240,7 +244,7 @@ and a subsequent history replay failure, despite the API smoke passing. This
 motivated the pre-execution argument check and bounded retry described above.
 The subsequent completed Web UI run changed `max_retries` from 2 to 3, preserved
 the other field and reread the file in 14 seconds. It still made three unnecessary
-shell calls before the read/edit/read sequence. The unit suite now has 703 passing
+shell calls before the read/edit/read sequence. The unit suite now has 696 passing
 tests; type checking and targeted lint checks also pass. These checks cover the
 new limits and rejection paths, not a claim that exploration is always optimal.
 

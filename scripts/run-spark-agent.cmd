@@ -23,7 +23,7 @@ set "MODEL=%~f1"
 if not defined SPARK_CTX set "SPARK_CTX=65536"
 if not defined SPARK_PARALLEL set "SPARK_PARALLEL=1"
 if not defined SPARK_PORT set "SPARK_PORT=8080"
-if not defined SPARK_REASONING_BUDGET set "SPARK_REASONING_BUDGET=512"
+if not defined SPARK_REASONING_BUDGET set "SPARK_REASONING_BUDGET=-1"
 if not defined SPARK_FLASH_ATTN set "SPARK_FLASH_ATTN=auto"
 if not defined SPARK_UBATCH set "SPARK_UBATCH=512"
 
