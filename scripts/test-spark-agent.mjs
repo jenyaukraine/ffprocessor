@@ -86,7 +86,8 @@ for (const thinking of [false, true]) {
     const reply = await completion([{ role: 'user', content: 'Write the numbers 1 through 30, separated by spaces.' }], undefined, thinking);
     assert(reply.content.includes('30'), 'Missing final answer');
 }
-const bounded = await completion([{ role: 'user', content: 'In your private analysis enumerate all prime numbers below 1000, then reply with only READY.' }], undefined, true, 32);
+// A one-token budget exercises forced closure without asking for an unbounded answer.
+const bounded = await completion([{ role: 'user', content: 'What is 17 times 23? Answer with the number only.' }], undefined, true, 1);
 assert(bounded.content.trim(), 'Reasoning budget left no final answer');
 
 const listing = await (await request('/tools')).json();

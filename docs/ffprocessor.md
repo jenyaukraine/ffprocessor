@@ -111,15 +111,19 @@ npm run test:unit -- --run
 ```
 
 The live smoke test uses only read_file/edit_file on one new temporary JSON
-file, checks streaming with reasoning on and off, checks a 256-token reasoning
+file, checks streaming with reasoning on and off, checks 1- and 256-token reasoning
 budget, rejects invalid line ranges, and requires a real edit followed by
 read-back. It exits nonzero when the agent only describes a change. No arbitrary
 model-generated shell commands are executed. The fixture is left for inspection.
 This tests the API/tool loop; the UI replay unit tests cover request serialization.
 
-On the development machine, this smoke test passed in about 5.5 seconds, including
-two text requests and the read/edit/read/final sequence. All 680 Web UI unit tests
+An initial idle-server smoke run passed in about 5.5 seconds, including two text
+requests and the read/edit/read/final sequence. All 680 Web UI unit tests
 passed, as did the Spark parser and chat-template regression tests.
+The rebuilt Web UI also performed and verified an actual file edit, but took
+unnecessary shell/search steps first. These fixes do not eliminate all inefficient
+model decisions. A reasoning budget limits the reasoning block, not answer length
+or the number of tool calls; shortening it can also reduce answer quality.
 
 The local integration was exercised with streamed text, streamed tool calls,
 and a Penguin task that read, repaired, and tested a small JavaScript module.
