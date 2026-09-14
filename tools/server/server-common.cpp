@@ -1321,6 +1321,19 @@ json oaicompat_chat_params_parse(
         throw std::invalid_argument("invalid type for \"enable_thinking\" (expected boolean, got string)");
     }
 
+    // Accept the common top-level spellings used by local clients as well as
+    // the chat_template_kwargs form above.  Previously these flags were
+    // silently ignored, leaving reasoning enabled for clients such as Studio.
+    for (const char * key : {"enable_thinking", "enableThinking"}) {
+        if (!body.contains(key)) {
+            continue;
+        }
+        if (!body.at(key).is_boolean()) {
+            throw std::invalid_argument(std::string("invalid type for \"") + key + "\" (expected boolean)");
+        }
+        inputs.enable_thinking = body.at(key).get<bool>();
+    }
+
     // Parse the OAI "reasoning_effort" field; "none" disables reasoning.
     if (body.contains("reasoning_effort")) {
         auto reasoning_effort = json_value(body, "reasoning_effort", std::string(""));
