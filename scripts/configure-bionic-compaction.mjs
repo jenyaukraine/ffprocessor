@@ -11,6 +11,11 @@ const rules = [
   ['main/index.js', [
     ["'autoCompactionTriggerRatio':0xf/0x10", "'autoCompactionTriggerRatio':0.5", 2],
     ['_0x4f497c*_0x1ac58a', '_0x4f497c*Math.min(_0x1ac58a,0.5)', 1],
+    [
+      'await _0x34faec[_0x4a9842(0xa401)]();',
+      "await _0x34faec[_0x4a9842(0xa401)]({'maxTokens':0x400,'temperature':0.1,'stopStrings':[],'enableThinking':!0x1});",
+      1,
+    ],
   ]],
   ['renderer/main_window.js', [
     ['autoCompactionTriggerRatio:15/16', 'autoCompactionTriggerRatio:0.5', 1],
@@ -71,7 +76,8 @@ if (apply) {
   const changed = edits.filter(edit => edit.original !== edit.updated);
   // Back up every target before modifying any of them; never replace an old backup.
   for (const edit of changed) {
-    fs.writeFileSync(`${edit.file}.ffprocessor-compaction-50.bak`, edit.original, { flag: 'wx' });
+    const backup = `${edit.file}.ffprocessor-compaction-50.bak`;
+    if (!fs.existsSync(backup)) fs.writeFileSync(backup, edit.original, { flag: 'wx' });
   }
   const written = [];
   try {
