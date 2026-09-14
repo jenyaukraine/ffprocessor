@@ -650,6 +650,25 @@ static void test_graph_optimize_alloc_dep() {
     GGML_ASSERT(!graph_reuses_allocation(true));
 }
 
+static void test_context_view_tail_after_buffer_split() {
+    auto [ctx, graph, ctx_ptr] = make_context();
+    (void) graph;
+    auto backend = dummy_backend_init(64);
+    auto * parent = make_input_with_size(ctx, 128);
+    auto * view = ggml_view_1d(ctx, parent, 8, 16);
+    auto * nested = ggml_view_1d(ctx, view, 4, 8);
+    ggml_backend_buffer_ptr buffer(ggml_backend_alloc_ctx_tensors_from_buft(ctx, &backend.buffer_type));
+    GGML_ASSERT(buffer);
+    GGML_ASSERT(parent->data != nullptr);
+    GGML_ASSERT(view->data == (char *) parent->data + 16);
+    GGML_ASSERT(nested->data == (char *) parent->data + 24);
+    GGML_ASSERT(view->buffer == parent->buffer);
+    GGML_ASSERT(nested->buffer == parent->buffer);
+    float values[4] = {};
+    ggml_backend_tensor_get(nested, values, 0, sizeof(values));
+    ggml_backend_tensor_set(nested, values, 0, sizeof(values));
+}
+
 static void run(const char * name, void (*f)()) {
     printf("%s ", name);
     fflush(stdout);
@@ -658,6 +677,7 @@ static void run(const char * name, void (*f)()) {
 }
 
 int main() {
+    run("test_context_view_tail_after_buffer_split", test_context_view_tail_after_buffer_split);
     run("test_max_size_too_many_tensors", test_max_size_too_many_tensors);
     run("test_max_size_tensor_too_large", test_max_size_tensor_too_large);
     run("test_tensor_larger_than_max_size", test_tensor_larger_than_max_size);

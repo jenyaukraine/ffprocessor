@@ -1209,6 +1209,17 @@ static ggml_backend_buffer_t ggml_backend_alloc_ctx_tensors_from_buft_impl(
         return NULL;
     }
 
+    // A split after an oversized parent can leave a view-only tail with no allocation range.
+    for (struct ggml_tensor * t = ggml_get_first_tensor(ctx); t != NULL; t = ggml_get_next_tensor(ctx, t)) {
+        if (t->view_src != NULL && t->buffer == NULL) {
+            if (ggml_backend_view_init(t) != GGML_STATUS_SUCCESS) {
+                GGML_LOG_ERROR("%s: failed to initialize view %s\n", __func__, t->name);
+                free_buffers(&buffers, &n_buffers);
+                return NULL;
+            }
+        }
+    }
+
     if (n_buffers == 0) {
 #ifndef NDEBUG
         GGML_LOG_DEBUG("%s: all tensors in the context are already allocated\n", __func__);

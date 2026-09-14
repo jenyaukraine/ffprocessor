@@ -62,7 +62,7 @@ application's runtime manager. Then run from this repository in PowerShell:
 
 ```powershell
 .\scripts\install-lmstudio-runtime.ps1
-& "$HOME\.lmstudio\bin\lms.exe" runtime select ffprocessor-spark-win-x86_64-vulkan-avx2@1.0.0
+& "$HOME\.lmstudio\bin\lms.exe" runtime select ffprocessor-spark-win-x86_64-vulkan-avx2@1.0.1
 & "$HOME\.lmstudio\bin\lms.exe" load spark-x2.5-4b --gpu max --context-length 32768 --parallel 1 --identifier spark-x2.5 -y
 ```
 
@@ -70,8 +70,8 @@ Unload an already-loaded Spark instance before loading it with the new runtime.
 Use `lms ps` to find its identifier and `lms unload <identifier>` to unload it.
 The model key in the example must match a model reported by `lms ls`.
 
-The runtime appears as **FFProcessor Spark (Vulkan) 1.0.0**. It is installed at
-`$HOME/.lmstudio/extensions/backends/ffprocessor-spark-win-x86_64-vulkan-avx2-1.0.0`.
+The runtime appears as **FFProcessor Spark (Vulkan) 1.0.1**. It is installed at
+`$HOME/.lmstudio/extensions/backends/ffprocessor-spark-win-x86_64-vulkan-avx2-1.0.1`.
 The inference executable is `ffprocessor/llama-server.exe` inside that directory.
 The installer copies our server and its matching DLLs into that isolated
 subdirectory. Stock host bindings and their DLLs stay together in the runtime
@@ -102,6 +102,35 @@ with valid JSON through `http://127.0.0.1:1234/v1/chat/completions`.
 This does not validate autonomous project refactoring. Native parser changes
 apply, but our built-in Web UI's agent loop and context management do not run
 inside the LM Studio/Bionic interface.
+
+### Runtime 1.0.1: large-context cache crash
+
+Version 1.0.0 can abort with `tensor not allocated` in `ggml_backend_tensor_get`
+when Vulkan buffer splitting leaves trailing KV views uninitialized. Bionic
+reports this as `Engine protocol ngPredictTokens request failed: fetch failed`.
+It was reproduced with Auto load (550912 context, 4 slots) on the second distinct
+request, while short single-slot smoke tests passed.
+
+Version 1.0.1 initializes remaining views after context buffer allocation. It
+does not remove allocation assertions, skip KV tensors, or disable prompt cache.
+The diagnosis is also described in upstream [PR #25584](https://github.com/ggml-org/llama.cpp/pull/25584).
+Our focused allocator regression fails before the change and passes afterward;
+all 15 `test-alloc` cases pass. The same Auto/4-slot runtime completed five
+sequential requests, including a 16020-token prompt and revisiting an earlier
+prompt, without exiting. To run the regression after building:
+
+```powershell
+.\build\bin\Release\test-alloc.exe
+node scripts/test-lmstudio-runtime.mjs http://127.0.0.1:1234 spark-x2.5-4b
+```
+
+Load the model with Auto and four slots before the API regression to exercise
+the large-buffer path. Do not run it alongside a live coding task. A smaller
+manually configured context is still preferable when the task does not need
+Auto's large context allocation.
+The API regression bounds each prediction and accepts a clean `length` finish;
+it tests process/stream survival, not whether reasoning reliably ends or code
+changes are correct. Each actual finish reason is printed.
 
 ## Run the built-in Web UI
 
