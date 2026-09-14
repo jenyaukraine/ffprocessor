@@ -18,6 +18,8 @@ with an AMD Radeon RX 7900 XTX using Vulkan.
 
 **[Reproduce BF16 to ROCmFP4 conversion](docs/spark-conversion.md)**
 
+**[Build coding-oriented Spark Q3 with imatrix](docs/spark-coding-q3.md)**
+
 **[Restore Bionic: Spark 64K + lightweight vision](docs/bionic-setup.md)**
 includes model-default profiles, downloads, and the optional 50% compaction patch.
 
