@@ -315,7 +315,7 @@ inspected SDK revision was `c47dce0d37a3008d3e4c393e40452825a2a9790b`.
   documents LM Studio deployment and names coding harness integrations; it does
   not establish this fork's Web UI as the reference coding harness.
 
-No LM Studio A/B benchmark has been run. Passing the API smoke test does not
+No broad LM Studio A/B benchmark has been run. Passing the API smoke test does not
 establish parity with LM Studio or reliable autonomous project maintenance.
 The first full Web UI test during this change exposed malformed edit arguments
 and a subsequent history replay failure, despite the API smoke passing. This
@@ -376,3 +376,61 @@ The reasoning replay investigation was informed by
 [OmniRoute issue 2637](https://github.com/diegosouzapw/OmniRoute/issues/2637).
 That issue concerns a different integration and model family; this fork fixes
 the locally verified Spark parser and Web UI paths, not OmniRoute itself.
+
+### LM Studio Agent Replay Check (2026-09-14)
+
+The cache-survival script is not an agent test. The separate script below requires
+a complete streamed read/edit/verify/final cycle through LM Studio's API. It keeps
+`reasoning_content` in assistant history, validates tool batches before execution,
+and only reads/writes one temporary JSON fixture. It never executes generated code
+or shell commands. A truncated completion is a failure, not a passing smoke test.
+
+```bat
+node scripts\test-lmstudio-agent.mjs http://127.0.0.1:1234 spark-x2.5-4b spark
+node scripts\test-lmstudio-agent.mjs http://127.0.0.1:1234 spark-x2.5-4b default
+```
+
+The `spark` profile uses temperature 1, top-p 0.95, disabled top-k/min-p and repeat
+penalty 1, based on the [authors' example](https://github.com/XHToken/Spark-X2.5).
+The `default` profile uses the observed local client values: temperature 0.8,
+top-k 40, top-p 0.95, min-p 0.05 and repeat penalty 1.1. These options affect only
+the test requests; the script does not change Bionic's saved settings.
+
+Both profiles completed four turns on runtime 1.0.1. The first profile's initial
+request included a long startup/wait interval, so these runs are not a throughput
+comparison. The native `/apply-template` check also preserved reasoning, a tool
+call and its result across an additional user turn. These findings do not prove
+that Bionic replays all history correctly or that broad refactoring is reliable.
+
+In the desktop client, a combined edit-and-test request continued planning without
+an edit until interrupted. A subsequent explicit single-edit request actually
+changed the helper and finished in 44 seconds. Independent checks passed eight
+input cases, alias identity and focused TypeScript checking. That is evidence of
+working editing, not a fix for open-ended agent planning.
+
+For broad project work, [focused project instructions](spark-project-instructions.md)
+provide a small-change workflow without a forced read-count limit or artificial
+reasoning terminator. They are guidance, not a guarantee. Merge them into the
+target project and ensure the client loads them on the next turn.
+
+A subsequent local failure was a client configuration conflict: total response
+length was limited to 810 tokens while the reasoning budget was 2048 tokens.
+The native slot confirmed `max_tokens=810`, and the saved assistant turn contained
+810 tokens of unfinished reasoning with no final answer. Check **Limit Response
+Length** in the model's defaults before changing parsers. A finite total budget
+must leave room for reasoning AND the answer/tool arguments (for example, 16384
+total with 2048 reasoning). Disabling that total cap is also supported, but allows
+long output; it is not a cure for repetitive reasoning. Do not silently force a
+different budget in the backend.
+
+After removal of the 810-token cap and loading the project instructions, the
+desktop client created a focused `node:test` file, ran it and reported its result.
+All ten cases passed on an independent rerun. This was a narrowly specified task
+in an existing long conversation, not an autonomous full-project refactor.
+
+Native measurements with 256 output tokens, no thinking and no concurrent
+generation: 171.7 tokens/s on a 37-token prompt; 131.2 tokens/s on a 29738-token
+prompt. The latter took 10.40 seconds to process its uncached input. Repeating it
+reused 29737 cached tokens, reducing total elapsed time from 12.48 to 2.09 seconds,
+while decode speed remained 131.7 tokens/s. These are synthetic generation tests,
+not useful-code throughput or Bionic task completion times.
