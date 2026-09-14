@@ -54,6 +54,55 @@ For UI development, run `npm ci`, `npm run check`, and `npm run build` in
 `tools/ui`, then rebuild the server. A local `tools/ui/dist` takes precedence
 over CMake's automatic UI build, so rebuild that directory after UI edits.
 
+## Install as an LM Studio / Bionic runtime
+
+Build the Windows Vulkan shared-library Release target above first. Install the
+official `llama.cpp-win-x86_64-vulkan-avx2` runtime version `2.37.0` through the
+application's runtime manager. Then run from this repository in PowerShell:
+
+```powershell
+.\scripts\install-lmstudio-runtime.ps1
+& "$HOME\.lmstudio\bin\lms.exe" runtime select ffprocessor-spark-win-x86_64-vulkan-avx2@1.0.0
+& "$HOME\.lmstudio\bin\lms.exe" load spark-x2.5-4b --gpu max --context-length 32768 --parallel 1 --identifier spark-x2.5 -y
+```
+
+Unload an already-loaded Spark instance before loading it with the new runtime.
+Use `lms ps` to find its identifier and `lms unload <identifier>` to unload it.
+The model key in the example must match a model reported by `lms ls`.
+
+The runtime appears as **FFProcessor Spark (Vulkan) 1.0.0**. It is installed at
+`$HOME/.lmstudio/extensions/backends/ffprocessor-spark-win-x86_64-vulkan-avx2-1.0.0`.
+The inference executable is `ffprocessor/llama-server.exe` inside that directory.
+The installer copies our server and its matching DLLs into that isolated
+subdirectory. Stock host bindings and their DLLs stay together in the runtime
+root; the original stock runtime directory is not modified. This relies on the
+installed application's `engine_protocol_server` support and is not a published
+or officially supported LM Studio extension.
+
+`ffprocessor-build.json` records the repository HEAD and binary SHA-256 hashes.
+Build before installation: the installer copies existing binaries; it does not
+prove that they correspond to HEAD or rebuild them. Git contains the installer
+and instructions, not the GGUF, proprietary host bindings, or compiled DLLs.
+The stock runtime must be obtained separately on each machine.
+
+Optional installer parameters: `-LmStudioHome`, `-BuildDirectory`, `-BaseRuntime`,
+and `-Version`. Defaults do not contain a machine-specific username or checkout
+path. Existing custom versions are never overwritten; install subsequent builds
+with a new version and select that exact version.
+
+To return to the stock runtime, unload the model and run:
+
+```powershell
+& "$HOME\.lmstudio\bin\lms.exe" runtime select llama.cpp-win-x86_64-vulkan-avx2@2.37.0
+```
+
+Verified locally: Spark load with 32K context and full GPU offload, the running
+executable path, binary hashes matching the local build, and an SSE tool call
+with valid JSON through `http://127.0.0.1:1234/v1/chat/completions`.
+This does not validate autonomous project refactoring. Native parser changes
+apply, but our built-in Web UI's agent loop and context management do not run
+inside the LM Studio/Bionic interface.
+
 ## Run the built-in Web UI
 
 Download your Spark X2.5 GGUF separately; model files are not in this repository.
