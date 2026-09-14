@@ -123,6 +123,43 @@ The tested result was about 1.46 GiB. This is an experimental quality/speed
 trade-off: validate tool calls, patch application, and tests against the
 uniform Q4 model before making it the default.
 
+## Maximum-speed coding profile
+
+On the AMD Radeon RX 7900 XTX Vulkan backend, the smallest file was not the
+fastest file: the experimental Q2 kernels had lower throughput than the fast
+ROCmFP4 kernels. The tested Turbo profile therefore uses a uniform fast Q4
+layout and a coding imatrix:
+
+```powershell
+llama-quantize.exe --imatrix D:/AI/models/spark-coding-output.imatrix.gguf `
+  --pure D:/AI/models/Spark-X2.5-4B-BF16.gguf `
+  D:/AI/models/Spark-X2.5-4B-ROCmFP4-TURBO-CODING.gguf `
+  Q4_0_ROCMFP4_FAST_EVEN
+```
+
+The tested artifact is about 2.04 GiB and reached 168.2 tokens/s on a short
+coding completion with one sequence, Flash Attention, and the following
+runtime profile:
+
+```text
+context: 32768
+parallel: 1
+gpu layers: maximum
+batch: 2048
+ubatch: 512
+flash attention: on
+KV cache: f16
+```
+
+LM Studio identifier:
+
+```text
+spark-x2.5-4b-rocmfp4-turbo-coding
+```
+
+The smaller Q2-heavy experimental profile remains available for comparison,
+but it is not the speed default on this Vulkan backend.
+
 ## Validation
 
 Load the output with the same Vulkan/ROCmFPX runtime used for Spark X2.5:
