@@ -16,6 +16,11 @@ const rules = [
       "await _0x34faec[_0x4a9842(0xa401)]({'maxTokens':0x400,'temperature':0.1,'stopStrings':[],'enableThinking':!0x1});",
       1,
     ],
+    [
+      "?{'reasoningLevel':_0x4a9842(0x6a80)}:{}",
+      "?{'reasoningLevel':_0x4a9842(0x6a80)}:{'reasoningLevel':'off'}",
+      1,
+    ],
   ]],
   ['renderer/main_window.js', [
     ['autoCompactionTriggerRatio:15/16', 'autoCompactionTriggerRatio:0.5', 1],
