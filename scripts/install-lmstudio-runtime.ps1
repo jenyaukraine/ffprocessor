@@ -4,7 +4,7 @@ param(
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9.-]*$')]
     [string]$BaseRuntime = 'llama.cpp-win-x86_64-vulkan-avx2-2.37.0',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.1'
+    [string]$Version = '1.0.2'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,6 +65,7 @@ $artifacts | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $des
 $provenance = @{
     repository = 'https://github.com/jenyaukraine/ffprocessor'
     commit = (& git -C (Join-Path $PSScriptRoot '..') rev-parse HEAD)
+    source_dirty = [bool](& git -C (Join-Path $PSScriptRoot '..') status --porcelain)
     base_runtime = $BaseRuntime
     artifacts = @($binaries | ForEach-Object {
         @{ file = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $engineDirectory $_) -Algorithm SHA256).Hash }

@@ -3281,13 +3281,13 @@ static common_chat_params common_chat_params_init_spark2_5(const common_chat_tem
             const std::string name  = function.at("name");
             auto params = function.contains("parameters") ? function.at("parameters") : json::object();
 
+            auto schema_info = common_schema_info();
+            schema_info.resolve_refs(params);
+            const auto properties = schema_info.property_schemas(params);
             auto args = p.eps();
-            if (params.contains("properties") && params.at("properties").is_object() && !params.at("properties").empty()) {
-                auto schema_info = common_schema_info();
-                schema_info.resolve_refs(params);
-
+            if (!properties.empty()) {
                 auto arg_choice = p.choice();
-                for (const auto & [prop_name, prop_schema] : params.at("properties").items()) {
+                for (const auto & [prop_name, prop_schema] : properties.items()) {
                     auto value = schema_info.resolves_to_string(prop_schema)
                         ? p.tool_arg_string_value(p.until(ARG_VALUE_END))
                         : p.tool_arg_json_value(p.schema(p.json(), "spark2-5-arg-" + name + "-" + prop_name + "-schema",

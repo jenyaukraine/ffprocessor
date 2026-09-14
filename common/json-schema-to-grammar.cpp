@@ -1122,6 +1122,50 @@ void common_schema_info::resolve_refs(common_json & schema) {
     impl_->resolve_refs(schema, "");
 }
 
+common_json common_schema_info::property_schemas(const common_json & schema) {
+    json declarations = json::object();
+    std::unordered_set<std::string> active_refs;
+    std::function<void(const json &)> visit = [&](const json & s) {
+        if (!s.is_object()) {
+            return;
+        }
+        if (s.contains("properties") && s.at("properties").is_object()) {
+            for (const auto & [name, value] : s.at("properties").items()) {
+                auto & alternatives = declarations[name];
+                if (alternatives.is_null()) {
+                    alternatives = json::array();
+                }
+                if (std::find(alternatives.begin(), alternatives.end(), value) == alternatives.end()) {
+                    alternatives.push_back(value);
+                }
+            }
+        }
+        if (s.contains("$ref") && s.at("$ref").is_string()) {
+            const std::string ref = s.at("$ref");
+            if (active_refs.insert(ref).second) {
+                const auto it = impl_->_refs.find(ref);
+                if (it != impl_->_refs.end()) {
+                    visit(it->second);
+                }
+                active_refs.erase(ref);
+            }
+        }
+        for (const auto * key : { "allOf", "anyOf", "oneOf" }) {
+            if (s.contains(key) && s.at(key).is_array()) {
+                for (const auto & branch : s.at(key)) {
+                    visit(branch);
+                }
+            }
+        }
+    };
+    visit(schema);
+    json properties = json::object();
+    for (const auto & [name, alternatives] : declarations.items()) {
+        properties[name] = alternatives.size() == 1 ? alternatives.front() : json{{"anyOf", alternatives}};
+    }
+    return properties;
+}
+
 // Determines if a JSON schema can resolve to a string type through any path.
 // Some models emit raw string values rather than JSON-encoded strings for string parameters.
 // If any branch of the schema (via oneOf, anyOf, $ref, etc.) permits a string, this returns

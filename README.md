@@ -16,6 +16,9 @@ with an AMD Radeon RX 7900 XTX using Vulkan.
 
 **[Build, run, and verify Spark X2.5](docs/ffprocessor.md)**
 
+**[Restore Bionic: Spark 64K + lightweight vision](docs/bionic-setup.md)**
+includes model-default profiles, downloads, and the optional 50% compaction patch.
+
 Build the Web UI from this repository, not the upstream prebuilt UI. Download
 model weights separately. PenguinHarness is optional; its setup is documented
 in the guide. No model files, credentials, or personal project data are included.

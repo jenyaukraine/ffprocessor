@@ -1804,12 +1804,13 @@ ggml_tensor * llm_graph_context::build_ffn(
                 cb(cur, "ffn_silu", il);
             } break;
         case LLM_FFN_GELU:
+        case LLM_FFN_GELU_ERF:
             if (gate && type_gate == LLM_FFN_PAR) {
-                cur = ggml_geglu_split(ctx0, cur, tmp);
+                cur = type_op == LLM_FFN_GELU_ERF ? ggml_geglu_erf_split(ctx0, cur, tmp) : ggml_geglu_split(ctx0, cur, tmp);
                 cb(cur, "ffn_geglu", il);
                 type_gate = LLM_FFN_SEQ;
             } else {
-                cur = ggml_gelu(ctx0, cur);
+                cur = type_op == LLM_FFN_GELU_ERF ? ggml_gelu_erf(ctx0, cur) : ggml_gelu(ctx0, cur);
                 cb(cur, "ffn_gelu", il);
                 if (act_scales != NULL) {
                     cur = ggml_div(ctx0, cur, act_scales);
@@ -2213,11 +2214,12 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
                 cb(cur, "ffn_moe_situ", il);
             } break;
         case LLM_FFN_GELU:
+        case LLM_FFN_GELU_ERF:
             if (has_gate) {
-                cur = ggml_geglu_split(ctx0, cur, up);
+                cur = type_op == LLM_FFN_GELU_ERF ? ggml_geglu_erf_split(ctx0, cur, up) : ggml_geglu_split(ctx0, cur, up);
                 cb(cur, "ffn_moe_geglu", il);
             } else {
-                cur = ggml_gelu(ctx0, cur);
+                cur = type_op == LLM_FFN_GELU_ERF ? ggml_gelu_erf(ctx0, cur) : ggml_gelu(ctx0, cur);
                 cb(cur, "ffn_moe_gelu", il);
             } break;
         case LLM_FFN_SWIGLU_OAI_MOE:

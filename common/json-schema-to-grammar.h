@@ -26,6 +26,8 @@ class common_schema_info {
 
     void resolve_refs(common_json & schema);
     bool resolves_to_string(const common_json & schema);
+    // Property declarations for tagged argument parsing, not full object validation.
+    common_json property_schemas(const common_json & schema);
 };
 
 struct common_grammar_builder {

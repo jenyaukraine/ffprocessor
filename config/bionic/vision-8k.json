@@ -1,0 +1,10 @@
+{
+  "preset": "",
+  "operation": { "fields": [] },
+  "load": {
+    "fields": [
+      { "key": "llm.load.contextLength", "value": 8192 },
+      { "key": "llm.load.llama.autoFit", "value": false }
+    ]
+  }
+}

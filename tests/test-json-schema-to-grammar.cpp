@@ -1509,11 +1509,33 @@ static void test_resolves_to_string() {
     fprintf(stderr, "All resolves_to_string tests passed!\n");
 }
 
+static void test_property_schemas() {
+    const auto properties = common_json::parse(R"({"path":{"type":"string"},"payload":{"type":"object"}})");
+    for (const auto * key : { "allOf", "anyOf", "oneOf" }) {
+        auto schema = common_json{{key, common_json::array({
+            {{"properties", {{"path", properties.at("path")}}}},
+            {{"properties", {{"payload", properties.at("payload")}}}},
+        })}};
+        common_schema_info info;
+        info.resolve_refs(schema);
+        GGML_ASSERT(info.property_schemas(schema) == properties);
+    }
+    auto schema = common_json::parse(R"({"$ref":"#/$defs/args","$defs":{"args":{"allOf":[{"$ref":"#/$defs/args"},{"properties":{"path":{"type":"string"}}}]}}})");
+    common_schema_info info;
+    info.resolve_refs(schema);
+    GGML_ASSERT(info.property_schemas(schema) == common_json({{"path", properties.at("path")}}));
+
+    schema = common_json::parse(R"({"oneOf":[{"properties":{"payload":{"type":"object"}}},{"properties":{"payload":{"type":"array"}}}]})");
+    GGML_ASSERT(info.property_schemas(schema).at("payload") == common_json::parse(R"({"anyOf":[{"type":"object"},{"type":"array"}]})"));
+    GGML_ASSERT(info.property_schemas(common_json::parse(R"({"properties":{}})")).empty());
+}
+
 int main() {
     fprintf(stderr, "LLAMA_NODE_AVAILABLE = %s\n", getenv("LLAMA_NODE_AVAILABLE") ? "true" : "false");
     fprintf(stderr, "LLAMA_PYTHON_AVAILABLE = %s\n", getenv("LLAMA_PYTHON_AVAILABLE") ? "true" : "false");
 
     test_resolves_to_string();
+    test_property_schemas();
 
     test_all("C++", [](const TestCase & tc) {
         try {

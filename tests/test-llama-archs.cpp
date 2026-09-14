@@ -413,6 +413,18 @@ static std::pair<llama_model_ptr, llama_context_ptr> get_model_and_ctx(
     if (!model) {
         throw std::runtime_error("failed to create llama model");
     }
+    char architecture[32] = {};
+    llama_model_meta_val_str(model.get(), "general.architecture", architecture, sizeof(architecture));
+    if (strcmp(architecture, "spark2_5") == 0) {
+        // CPU/GPU parity alone cannot detect the same wrong activation on both backends.
+        ctx_params.cb_eval = [](ggml_tensor * tensor, bool ask, void *) {
+            if (ask && strncmp(tensor->name, "ffn_geglu-", 10) == 0) {
+                GGML_ASSERT(tensor->op == GGML_OP_GLU);
+                GGML_ASSERT(ggml_get_glu_op(tensor) == GGML_GLU_OP_GEGLU_ERF);
+            }
+            return false;
+        };
+    }
     llama_context_ptr lctx(llama_init_from_model(model.get(), ctx_params));
     if (!lctx) {
         throw std::runtime_error("failed to create llama context");

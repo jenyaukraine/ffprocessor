@@ -13,6 +13,7 @@ void llama_model_spark2_5::load_arch_hparams(llama_model_loader & ml) {
 
     switch (hparams.n_layer()) {
         case 28: type = LLM_TYPE_1_7B; break;
+        case 36: type = LLM_TYPE_4B; break;
         default: type = LLM_TYPE_UNKNOWN;
     }
 }
@@ -124,7 +125,7 @@ llama_model_spark2_5::graph::graph(const llama_model & model, const llm_graph_pa
                 model.layers[il].ffn_gate, nullptr, nullptr,
                 model.layers[il].ffn_down, nullptr, nullptr,
                 nullptr,
-                LLM_FFN_GELU, LLM_FFN_PAR, il);
+                LLM_FFN_GELU_ERF, LLM_FFN_PAR, il);
         cb(cur, "ffn_out", il);
 
         cur = ggml_add(ctx0, cur, ffn_inp);

@@ -62,7 +62,7 @@ application's runtime manager. Then run from this repository in PowerShell:
 
 ```powershell
 .\scripts\install-lmstudio-runtime.ps1
-& "$HOME\.lmstudio\bin\lms.exe" runtime select ffprocessor-spark-win-x86_64-vulkan-avx2@1.0.1
+& "$HOME\.lmstudio\bin\lms.exe" runtime select ffprocessor-spark-win-x86_64-vulkan-avx2@1.0.2
 & "$HOME\.lmstudio\bin\lms.exe" load spark-x2.5-4b --gpu max --context-length 32768 --parallel 1 --identifier spark-x2.5 -y
 ```
 
@@ -70,8 +70,8 @@ Unload an already-loaded Spark instance before loading it with the new runtime.
 Use `lms ps` to find its identifier and `lms unload <identifier>` to unload it.
 The model key in the example must match a model reported by `lms ls`.
 
-The runtime appears as **FFProcessor Spark (Vulkan) 1.0.1**. It is installed at
-`$HOME/.lmstudio/extensions/backends/ffprocessor-spark-win-x86_64-vulkan-avx2-1.0.1`.
+The runtime appears as **FFProcessor Spark (Vulkan) 1.0.2**. It is installed at
+`$HOME/.lmstudio/extensions/backends/ffprocessor-spark-win-x86_64-vulkan-avx2-1.0.2`.
 The inference executable is `ffprocessor/llama-server.exe` inside that directory.
 The installer copies our server and its matching DLLs into that isolated
 subdirectory. Stock host bindings and their DLLs stay together in the runtime
@@ -79,7 +79,7 @@ root; the original stock runtime directory is not modified. This relies on the
 installed application's `engine_protocol_server` support and is not a published
 or officially supported LM Studio extension.
 
-`ffprocessor-build.json` records the repository HEAD and binary SHA-256 hashes.
+`ffprocessor-build.json` records the repository HEAD, dirty-source flag and binary SHA-256 hashes.
 Build before installation: the installer copies existing binaries; it does not
 prove that they correspond to HEAD or rebuild them. Git contains the installer
 and instructions, not the GGUF, proprietary host bindings, or compiled DLLs.
@@ -102,6 +102,16 @@ with valid JSON through `http://127.0.0.1:1234/v1/chat/completions`.
 This does not validate autonomous project refactoring. Native parser changes
 apply, but our built-in Web UI's agent loop and context management do not run
 inside the LM Studio/Bionic interface.
+
+### Runtime 1.0.2: activation and composed tool schemas
+
+Spark now selects exact-erf GELU instead of the tanh approximation, matching its
+reference MLP. The tagged-tool parser discovers arguments inside top-level
+`allOf`, `anyOf`, `oneOf` and local `$ref` schemas instead of treating these tools
+as parameterless. The 36-layer checkpoint is also identified as 4B rather than
+unknown. See the [September 2026 audit](spark-audit-2026-09-14.md) for sources,
+regressions, live results and remaining limitations. This is not model training
+or a guarantee against agent loops.
 
 ### Runtime 1.0.1: large-context cache crash
 

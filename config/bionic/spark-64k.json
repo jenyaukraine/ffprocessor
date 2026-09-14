@@ -1,0 +1,29 @@
+{
+  "preset": "",
+  "operation": {
+    "fields": [
+      { "key": "llm.prediction.reasoning.budgetTokens", "value": { "checked": true, "value": 2048 } },
+      { "key": "llm.prediction.topKSampling", "value": 0 },
+      { "key": "llm.prediction.repeatPenalty", "value": { "checked": true, "value": 1 } },
+      { "key": "llm.prediction.temperature", "value": 1 },
+      { "key": "llm.prediction.maxPredictedTokens", "value": { "checked": false, "value": 16384 } }
+    ]
+  },
+  "load": {
+    "fields": [
+      { "key": "llm.load.llama.evalBatchSize", "value": 1024 },
+      { "key": "llm.load.llama.speculativeDecoding.draftMtp", "value": false },
+      { "key": "llm.load.llama.speculativeDecoding.draftSimple", "value": false },
+      { "key": "llm.load.llama.speculativeDecoding.draftDflashSidecar", "value": false },
+      { "key": "llm.load.llama.speculativeDecoding.draftDsparkSidecar", "value": false },
+      { "key": "llm.load.llama.speculativeDecoding.draftMtpSidecar", "value": false },
+      { "key": "llm.load.llama.speculativeDecoding.draftModel", "value": "" },
+      { "key": "llm.load.llama.speculativeDecoding.draftMaxTokens", "value": 3 },
+      { "key": "llm.load.llama.speculativeDecoding.draftMinTokens", "value": 0 },
+      { "key": "llm.load.llama.speculativeDecoding.draftMinContinueProbability", "value": 0 },
+      { "key": "llm.load.llama.argumentsOverride", "value": { "enabled": false, "disabledParameters": [], "overrideParameters": [], "excludeAllConfig": false } },
+      { "key": "llm.load.llama.autoFit", "value": false },
+      { "key": "llm.load.contextLength", "value": 65536 }
+    ]
+  }
+}

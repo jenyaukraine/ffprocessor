@@ -4427,7 +4427,31 @@ static void test_template_output_peg_parsers(bool detailed_debug) {
             .run();
 
         auto edit_templates = read_templates("models/templates/Spark2.5.jinja");
+        for (const auto * composition : { "allOf", "anyOf", "oneOf", "$ref" }) {
+            auto composed_tool = edit_tool;
+            const auto parameters = json::parse(edit_tool.parameters);
+            composed_tool.parameters = std::string(composition) == "$ref"
+                ? json{{"$defs", {{"args", parameters}}}, {"$ref", "#/$defs/args"}}.dump()
+                : json{{composition, json::array({parameters})}}.dump();
+            tst.test(edit_prefix + edits.dump() + edit_suffix)
+                .enable_thinking(false)
+                .tools({ composed_tool })
+                .expect_tool_calls({{ "edit_file", json({{"path", "C:\\project\\file.php"}, {"edits", edits}}).dump(), {} }})
+                .run();
+        }
         common_chat_templates_inputs edit_inputs;
+        const common_chat_tool composed_tool{
+            "record", "Record a typed payload",
+            R"({"type":"object","properties":{"enabled":{"type":"boolean"}},"oneOf":[{"properties":{"payload":{"type":"object","properties":{"value":{"type":"integer"}},"required":["value"]}}},{"properties":{"payload":{"type":"array","items":{"type":"integer"}}}}]})"
+        };
+        for (const auto & payload : { json{{"value", 7}}, json::array({1, 2}) }) {
+            tst.test("<tool_call>record<arg_key>enabled</arg_key><arg_value>true</arg_value>"
+                     "<arg_key>payload</arg_key><arg_value>" + payload.dump() + "</arg_value></tool_call>")
+                .enable_thinking(false)
+                .tools({ composed_tool })
+                .expect_tool_calls({{ "record", json{{"enabled", true}, {"payload", payload}}.dump(), {} }})
+                .run();
+        }
         edit_inputs.messages = { message_user };
         edit_inputs.tools = { edit_tool };
         edit_inputs.enable_thinking = false;
