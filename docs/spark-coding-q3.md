@@ -93,6 +93,36 @@ promise a smaller file.
 For a smaller, less conservative file, use `Q3_0_ROCMFPX` instead of
 `Q3_0_ROCMFPX_AGENT`. Test tool calls and coding tasks before adopting it.
 
+## Mixed Q4/Q2 variant
+
+For a smaller model with a precision budget focused on coding-sensitive
+weights, generate a tensor routing file from the same imatrix:
+
+```powershell
+python .\scripts\build-spark-q4-q2-routing.py `
+  D:/AI/models/spark-coding-output.imatrix.gguf `
+  D:/AI/models/spark-q4-q2-routing.txt `
+  --important-fraction 0.40
+```
+
+Then quantize with Q4 for the selected important tensors and Q2 as the
+catch-all for the remaining quantizable tensors:
+
+```powershell
+llama-quantize.exe `
+  --imatrix D:/AI/models/spark-coding-output.imatrix.gguf `
+  --tensor-type-file D:/AI/models/spark-q4-q2-routing.txt `
+  --output-tensor-type Q4_0_ROCMFP4_FAST `
+  --token-embedding-type Q4_0_ROCMFP4_FAST `
+  D:/AI/models/Spark-X2.5-4B-BF16.gguf `
+  D:/AI/models/Spark-X2.5-4B-ROCmFPX-Q4-Q2-CODING.gguf `
+  Q2_0_ROCMFPX
+```
+
+The tested result was about 1.46 GiB. This is an experimental quality/speed
+trade-off: validate tool calls, patch application, and tests against the
+uniform Q4 model before making it the default.
+
 ## Validation
 
 Load the output with the same Vulkan/ROCmFPX runtime used for Spark X2.5:
