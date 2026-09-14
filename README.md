@@ -16,6 +16,8 @@ with an AMD Radeon RX 7900 XTX using Vulkan.
 
 **[Build, run, and verify Spark X2.5](docs/ffprocessor.md)**
 
+**[Reproduce BF16 to ROCmFP4 conversion](docs/spark-conversion.md)**
+
 **[Restore Bionic: Spark 64K + lightweight vision](docs/bionic-setup.md)**
 includes model-default profiles, downloads, and the optional 50% compaction patch.
 

@@ -65,6 +65,42 @@ default and effective maximum enabled ratio are 50%; at 64K that is 32,768 token
 An administrator terminal is required to modify a Program Files installation.
 Restart Bionic afterward. Do not assume a Git pull applies it to the installed app.
 
+## Optional ROCmFPX Runtime
+
+ROCmFP4/ROCmFPX GGUF variants use non-mainline tensor types; the FFProcessor
+Spark runtime does not support those types. For an existing Windows Vulkan
+build of [ROCmFPX](https://github.com/charlie12345/ROCmFPX), install it separately:
+
+```powershell
+.\scripts\install-rocmfpx-runtime.ps1 -BuildDirectory "$HOME\Downloads\ROCmFPX\build-vulkan\bin"
+& "$HOME\.lmstudio\bin\lms.exe" runtime select rocmfpx-win-x86_64-vulkan-avx2@1.0.0
+```
+
+It appears under **Settings > Runtime > GGUF** as **ROCmFPX (Vulkan) 1.0.0**.
+The installer preserves the stock host bindings, places the supplied executable
+and matching DLLs in an isolated `rocmfpx` subdirectory, verifies copy hashes,
+and refuses to overwrite an existing runtime. It does not select the runtime,
+download models, compile ROCmFPX, or modify FFProcessor. The source build must
+already exist; this repository does not contain the ROCmFPX binaries or source.
+
+With no conflicting loaded instance, a bounded loading check is:
+
+```powershell
+& "$HOME\.lmstudio\bin\lms.exe" load ornith-1.5-9b-rocmfp4-fast --gpu max --context-length 8192 --parallel 1 --identifier rocmfpx-check --ttl 300 -y
+& "$HOME\.lmstudio\bin\lms.exe" ps
+# Finish testing before unloading and restoring the previous selection:
+& "$HOME\.lmstudio\bin\lms.exe" unload rocmfpx-check
+& "$HOME\.lmstudio\bin\lms.exe" runtime select ffprocessor-spark-win-x86_64-vulkan-avx2@1.0.2
+```
+
+On 2026-09-14 the supplied ROCmFPX build reported `1 (c49ebdb)`, MSVC
+19.44.35228.0. Ornith loaded in Bionic at 8K/one slot and returned `4` for a
+simple arithmetic request via incremental SSE with a normal stop and `[DONE]`.
+The running executable path pointed to the isolated ROCmFPX package. This does
+not establish Gemma compatibility, agent reliability, or operation at 220K.
+The runtime launcher lets Bionic supply model, port, and load parameters;
+the model-specific command line from a standalone BAT file is not hardcoded.
+
 ## Verification Scope
 
 Both models loaded together successfully. The vision API reported `vision=true`
