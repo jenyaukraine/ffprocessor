@@ -72,11 +72,11 @@ Spark runtime does not support those types. For an existing Windows Vulkan
 build of [ROCmFPX](https://github.com/charlie12345/ROCmFPX), install it separately:
 
 ```powershell
-.\scripts\install-rocmfpx-runtime.ps1 -BuildDirectory "$HOME\Downloads\ROCmFPX\build-vulkan\bin"
-& "$HOME\.lmstudio\bin\lms.exe" runtime select rocmfpx-win-x86_64-vulkan-avx2@1.0.0
+.\scripts\install-rocmfpx-runtime.ps1 -BuildDirectory "$HOME\Downloads\ROCmFPX\build-vulkan-msvc\bin\Release"
+& "$HOME\.lmstudio\bin\lms.exe" runtime select rocmfpx-win-x86_64-vulkan-avx2@1.0.1
 ```
 
-It appears under **Settings > Runtime > GGUF** as **ROCmFPX (Vulkan) 1.0.0**.
+It appears under **Settings > Runtime > GGUF** as **ROCmFPX (Vulkan) 1.0.1**.
 The installer preserves the stock host bindings, places the supplied executable
 and matching DLLs in an isolated `rocmfpx` subdirectory, verifies copy hashes,
 and refuses to overwrite an existing runtime. It does not select the runtime,
@@ -93,7 +93,7 @@ With no conflicting loaded instance, a bounded loading check is:
 & "$HOME\.lmstudio\bin\lms.exe" runtime select ffprocessor-spark-win-x86_64-vulkan-avx2@1.0.2
 ```
 
-On 2026-09-14 the supplied ROCmFPX build reported `1 (c49ebdb)`, MSVC
+On 2026-09-14 the supplied ROCmFPX build reported `2 (c4ad777)`, MSVC
 19.44.35228.0. Ornith loaded in Bionic at 8K/one slot and returned `4` for a
 simple arithmetic request via incremental SSE with a normal stop and `[DONE]`.
 The running executable path pointed to the isolated ROCmFPX package. This does

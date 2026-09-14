@@ -1,10 +1,10 @@
 param(
     [string]$LmStudioHome = (Join-Path $HOME '.lmstudio'),
-    [string]$BuildDirectory = (Join-Path $HOME 'Downloads/ROCmFPX/build-vulkan/bin'),
+    [string]$BuildDirectory = (Join-Path $HOME 'Downloads/ROCmFPX/build-vulkan-msvc/bin/Release'),
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9.-]*$')]
     [string]$BaseRuntime = 'llama.cpp-win-x86_64-vulkan-avx2-2.37.0',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.0'
+    [string]$Version = '1.0.1'
 )
 
 $ErrorActionPreference = 'Stop'
