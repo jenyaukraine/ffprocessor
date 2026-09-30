@@ -9,7 +9,13 @@ const settings = path.join(process.env.LOCALAPPDATA, 'ffprocessor', 'bionic-cont
 const edits = [];
 function edit(relative, change) {
   const file = path.join(root, relative), original = fs.readFileSync(file, 'utf8');
-  if (original.includes(marker)) return;
+  if (original.includes(marker)) {
+    if(relative==='renderer/main_window.js' && original.includes('{value:ratio,children:"Compact "+')) {
+      const updated=original.replace('{value:ratio,children:"Compact "+','{value:ratio,style:{color:"#111",backgroundColor:"#fff"},children:"Compact "+');
+      new vm.Script(updated); edits.push({file,original,updated,revision:true});
+    }
+    return;
+  }
   const updated = change(original);
   new vm.Script(updated, { filename: file });
   edits.push({ file, original, updated });
@@ -45,11 +51,12 @@ edit('renderer/main_window.js', source => {
   const start=source.indexOf(after), end=source.indexOf('tt=(0,w.memo)',start);
   let component=source.slice(start,end);
   component=once(component,'children:[(0,r.jsx)(C.LuGauge,',`children:[(0,r.jsx)("select",{"aria-label":"Auto compaction threshold",title:"Global auto compaction threshold; conservative context cap "+ff.contextCap+" tokens. Applies to enabled compaction modules on the next model call.",className:"text-xs bg-transparent text-foreground-muted",value:ff.ratio,disabled:ffError,onChange:event=>{window.ffprocessorContext.set(Number(event.target.value)).then(ffSet).catch(()=>ffSetError(true))},children:[.4,.5,.6,.7,.8].map(ratio=>(0,r.jsx)("option",{value:ratio,children:"Compact "+Math.round(ratio*100)+"%"},ratio))}),(0,r.jsx)(C.LuGauge,`);
+  component=component.replace('{value:ratio,children:"Compact "+','{value:ratio,style:{color:"#111",backgroundColor:"#fff"},children:"Compact "+');
   return source.slice(0,start)+component+source.slice(end)+`\n/* ${marker} */\n`;
 });
 console.log(`PASS: validated ${edits.length} bundle changes; settings ${settings}`);
 if(process.argv.includes('--apply')) {
-  for(const edit of edits) fs.writeFileSync(edit.file+'.'+marker+'.bak',edit.original,{flag:'wx'});
+  for(const edit of edits) fs.writeFileSync(edit.file+'.'+marker+(edit.revision?'.revision2':'')+'.bak',edit.original,{flag:'wx'});
   const written=[];
   try {for(const edit of edits){written.push(edit);fs.writeFileSync(edit.file,edit.updated);}}
   catch(error){for(const edit of written)fs.writeFileSync(edit.file,edit.original);throw error;}
